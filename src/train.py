@@ -1,0 +1,107 @@
+from rdkit import Chem
+from typing import Any
+import torch
+
+
+class DataLoader:
+    def __init__(self) -> None:
+        pass
+
+    def __iter__(self):
+        pass
+
+
+class DrugMolecule:
+    def __init__(self, smiles_str: str) -> None:
+        self.node_features, self.edge_features, self.adjacency_list = self._construct_molecular_graph(smiles_str)
+        self.num_nodes = len(self.node_features)
+
+        self.node_tensor, self.edge_tensor, self.adjacency_tensor = self._tensor_preprocess()
+
+    def _construct_molecular_graph(self, smiles_str: str) -> tuple[list[Any], list[Any], list[Any]]:
+        mol = Chem.RemoveHs(Chem.MolFromSmiles(smiles_str))  # remove explicit H atoms
+
+        node_features = []
+        adjacency_list = []
+        edge_features = []
+
+        for atom in mol.GetAtoms():
+            feats = {
+                "atomic_num": atom.GetAtomicNum(),
+                "formal_charge": atom.GetFormalCharge(),
+                "degree": atom.GetDegree(),
+                "hybridization": str(atom.GetHybridization()),
+                "aromatic": int(atom.GetIsAromatic())
+            }
+            node_features.append(feats)
+
+        for bond in mol.GetBonds():
+            i = bond.GetBeginAtomIdx()
+            j = bond.GetEndAtomIdx()
+            bond_feat = {
+                "bond_type": str(bond.GetBondType()),
+                "conjugated": int(bond.GetIsConjugated()),
+                "ring": int(bond.IsInRing())
+            }
+            edge_features.append(((i, j), bond_feat))
+            # Undirected adjacency
+            adjacency_list.append((i, j))
+            adjacency_list.append((j, i))
+
+        return node_features, edge_features, adjacency_list
+
+    def _tensor_preprocess(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        processed_node_features = []
+        for features in self.node_features:
+            processed_node_features.append(self._process_node_features(features))
+        node_tensor = torch.tensor(processed_node_features)
+
+        # 14 different bond types plus 2 numerical variables
+        num_edge_features = 16
+        edge_tensor = torch.zeros((self.num_nodes, self.num_nodes, num_edge_features))
+        for (node_1, node_2), features in self.edge_features:
+            edge_tensor[node_1, node_2, :] = torch.tensor(self._process_edge_features(features))
+
+        adjacency_tensor = torch.diag(torch.ones(self.num_nodes))
+        for node_1, node_2 in self.adjacency_list:
+            adjacency_tensor[node_1, node_2] = 1
+
+        return node_tensor, edge_tensor, adjacency_tensor
+
+    def _process_node_features(self, features: dict[str, int | str]) -> list[int]:
+        hybridization_encoder_dict = {
+            "UNSPECIFIED": 0, "S": 1, "SP": 2, "SP2": 3, "SP3": 4,
+            "SP2D": 5, "SP3D": 6, "SP3D2": 7, "OTHER": 8
+        }
+
+        processed_features = []
+        for key, val in features.items():
+            if key == 'hybridization':
+                one_hot_list = [0] * len(hybridization_encoder_dict)
+                one_hot_list[hybridization_encoder_dict[val]] = 1
+                processed_features.extend(one_hot_list)
+            else:
+                processed_features.append(val)
+        return processed_features
+
+    def _process_edge_features(self, features: dict[str, int | str]) -> list[int]:
+        bond_type_encoder_dict = {
+            "UNSPECIFIED": 0, "SINGLE": 1, "DOUBLE": 2, "TRIPLE": 3, "AROMATIC": 4,
+            "IONIC": 5, "HYDROGEN": 6, "THREECENTER": 7, "DATIVEONE": 8,
+            "DATIVE": 9, "DATIVEL": 10, "DATIVER": 11, "OTHER": 12, "ZERO": 13
+        }
+
+        processed_features = []
+        for key, val in features.items():
+            if key == 'bond_type':
+                one_hot_list = [0] * len(bond_type_encoder_dict)
+                one_hot_list[bond_type_encoder_dict[val]] = 1
+                processed_features.extend(one_hot_list)
+            else:
+                processed_features.append(val)
+        return processed_features
+
+
+
+if __name__ == '__main__':
+    DrugMolecule("O=C(NO)[C@H]1C[C@@H](OC(=O)N2CCCC2)CN[C@@H]1C(=O)N1CC=C(c2ccccc2)CC1")
