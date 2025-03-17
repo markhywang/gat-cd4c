@@ -2,6 +2,8 @@ from rdkit import Chem
 from typing import Any
 import torch
 
+from model import GraphAttentionNetwork
+
 
 class DataLoader:
     def __init__(self) -> None:
@@ -55,16 +57,19 @@ class DrugMolecule:
         for features in self.node_features:
             processed_node_features.append(self._process_node_features(features))
         node_tensor = torch.tensor(processed_node_features)
+        node_tensor = node_tensor.type(torch.float32)
 
         # 14 different bond types plus 2 numerical variables
         num_edge_features = 16
         edge_tensor = torch.zeros((self.num_nodes, self.num_nodes, num_edge_features))
         for (node_1, node_2), features in self.edge_features:
             edge_tensor[node_1, node_2, :] = torch.tensor(self._process_edge_features(features))
+        edge_tensor = edge_tensor.type(torch.float32)
 
         adjacency_tensor = torch.diag(torch.ones(self.num_nodes))
         for node_1, node_2 in self.adjacency_list:
             adjacency_tensor[node_1, node_2] = 1
+        adjacency_tensor = adjacency_tensor.type(torch.float32)
 
         return node_tensor, edge_tensor, adjacency_tensor
 
@@ -102,6 +107,7 @@ class DrugMolecule:
         return processed_features
 
 
-
 if __name__ == '__main__':
-    DrugMolecule("O=C(NO)[C@H]1C[C@@H](OC(=O)N2CCCC2)CN[C@@H]1C(=O)N1CC=C(c2ccccc2)CC1")
+    mol = DrugMolecule("O=C(NO)[C@H]1C[C@@H](OC(=O)N2CCCC2)CN[C@@H]1C(=O)N1CC=C(c2ccccc2)CC1")
+    model = GraphAttentionNetwork(13, 1, 16, 20, 4, 2)
+    print(model(mol.node_tensor.unsqueeze(0), mol.edge_tensor.unsqueeze(0), mol.adjacency_tensor.unsqueeze(0)))
