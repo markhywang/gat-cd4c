@@ -25,14 +25,14 @@ class GraphAttentionNetwork(nn.Module):
 
         # [B, N, F_in] -> [B, N, F_out]
         final_node_features, _, _ = self.gat_layers(input_tuple)
-    
+
         # [B, N, F_out] -> [B, 1]
         pchembl_scores = final_node_features.squeeze(2).sum(dim=1)
         return pchembl_scores
 
 
 class GraphAttentionLayer(nn.Module):
-    def __init__(self, in_features: int, out_features: int, 
+    def __init__(self, in_features: int, out_features: int,
                  num_edge_features: int, num_attn_heads: int = 1, use_leaky_relu: bool = True) -> None:
         super().__init__()
 
@@ -68,11 +68,11 @@ class GraphAttentionLayer(nn.Module):
         attn_coeffs = self._compute_attn_coeffs(new_node_features, edge_features, adjacency_matrix, num_nodes)
         new_node_features = self._execute_message_passing(new_node_features, attn_coeffs, batch_size, num_nodes)
 
-        if self.use_leaky_relu:
-            new_node_features = self.leaky_relu(self.layer_norm_2(new_node_features))
-
         new_node_features = self.out_projection(new_node_features)
         new_node_features = self.projection_dropout(new_node_features)
+
+        if self.use_leaky_relu:
+            new_node_features = self.leaky_relu(self.layer_norm_2(new_node_features))
 
         return new_node_features, edge_features, adjacency_matrix
 
