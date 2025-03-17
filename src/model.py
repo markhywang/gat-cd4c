@@ -67,12 +67,12 @@ class GraphAttentionLayer(nn.Module):
 
         attn_coeffs = self._compute_attn_coeffs(new_node_features, edge_features, adjacency_matrix, num_nodes)
         new_node_features = self._execute_message_passing(new_node_features, attn_coeffs, batch_size, num_nodes)
+        
+        new_node_features = self.out_projection(new_node_features)
+        new_node_features = self.projection_dropout(new_node_features)
 
         if self.use_leaky_relu:
             new_node_features = self.leaky_relu(self.layer_norm_2(new_node_features))
-
-        new_node_features = self.out_projection(new_node_features)
-        new_node_features = self.projection_dropout(new_node_features)
 
         return new_node_features, edge_features, adjacency_matrix
 
