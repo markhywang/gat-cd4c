@@ -41,11 +41,11 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scheduler_rate", type=int, required=False, default=5,
                         help="Number of epochs before reducing the learning rate")
     # Model parameters
-    parser.add_argument("--hidden_size", type=int, required=False, default=32,
+    parser.add_argument("--hidden_size", type=int, required=False, default=256,
                         help="The size of embeddings for hidden layers")
-    parser.add_argument("--num_layers", type=int, required=False, default=4,
+    parser.add_argument("--num_layers", type=int, required=False, default=16,
                         help="The number of graph attention layers to use")
-    parser.add_argument("--num_attn_heads", type=int, required=False, default=4,
+    parser.add_argument("--num_attn_heads", type=int, required=False, default=8,
                         help="The number of attention heads to use for every attention block")
     parser.add_argument("--dropout", type=float, required=False, default=0.2,
                         help="Dropout percentage for graph attention layers")

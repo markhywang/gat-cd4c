@@ -58,7 +58,8 @@ class GraphAttentionLayer(nn.Module):
         nn.init.xavier_uniform_(self.projection.weight.data, gain=math.sqrt(2))
         nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
 
-    def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) \
+            -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # Initial node_features shape: [B, N, F_in]
         node_features, edge_features, adjacency_matrix = x
         batch_size, num_nodes, num_node_features = node_features.shape
@@ -115,7 +116,7 @@ class GraphAttentionLayer(nn.Module):
 
         # [B, N, N] -> [B, N, N, 1]
         reshaped_adjacency_matrix = adjacency_matrix.unsqueeze(-1)
-        
+
         # Apply attention masking, similar to that of autoregression
         # The shape is still [B, N, N, num_heads]
         attn_logits = attn_logits.masked_fill(reshaped_adjacency_matrix == 0, float('-inf'))
