@@ -11,6 +11,7 @@ from dataset import DrugProteinDataset
 
 def train_model(args: argparse.Namespace) -> None:
     # TODO - remove hard-coded specifications for the model
+    # TODO - split dataset into train, validation, and test
     model = GraphAttentionNetwork(333, 1, 16,
                                   args.hidden_size, args.num_layers, args.num_attn_heads)
     dataset = DrugProteinDataset(args.data_path)
