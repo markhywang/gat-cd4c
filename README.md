@@ -1,4 +1,4 @@
-# Applying GAT for Drug-Target Interaction Prediction
+# Graph Attention Network for Drug-Target Interaction Prediction
 
 Drug-Target Interaction (DTI) prediction is an essential process in the development of new drugs. However, the existing drug development process relies on experimental verification, which requires high costs and long development times. Recently, artificial intelligence (AI)-based molecular graph analysis has been playing an important role in the new drug screening process, and in particular, Graph Neural Networks (GNNs) have been attracting attention as a powerful tool for effectively learning the structural information of molecules.
 
