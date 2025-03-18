@@ -1,16 +1,10 @@
 from rdkit import Chem
 from typing import Any
 import torch
+from torch.utils.data import Dataset
+import pandas as pd
 
 from model import GraphAttentionNetwork
-
-
-class DataLoader:
-    def __init__(self) -> None:
-        pass
-
-    def __iter__(self):
-        pass
 
 
 class DrugMolecule:
@@ -105,6 +99,39 @@ class DrugMolecule:
             else:
                 processed_features.append(val)
         return processed_features
+
+
+class DrugProteinDataset(Dataset):
+    def __init__(self, data_folder: str) -> None:
+        super().__init__()
+
+        data_df = pd.read_csv(f'{data_folder}/cancer_all.csv')
+        self.size = data_df.shape[0]
+
+        self.pchembl_scores = data_df['pChEMBL_Value'].tolist()
+        self.protein_ids = data_df['Target_ID'].tolist()
+        self.smiles_strs = data_df['smiles'].tolist()
+
+        protein_embeddings_df = pd.read_csv(f'{data_folder}/protein_embeddings.csv', index_col=0)
+        self.protein_embeddings_dict = {x: torch.tensor(protein_embeddings_df.loc[x, :].tolist())
+                                        for x in protein_embeddings_df.index}
+
+        # Lazyload the drug graphs.
+        self.drug_graphs = [None] * self.size
+
+    def __len__(self):
+        return self.size
+
+    def __getitem__(self, idx: int) -> tuple[DrugMolecule, torch.Tensor, float]:
+        drug_graph = self.drug_graphs[idx]
+        if drug_graph is None:
+            drug_graph = DrugMolecule(self.smiles_strs[idx])
+            self.drug_graphs[idx] = drug_graph
+
+        protein_id = self.protein_ids[idx]
+        protein_embedding = self.protein_embeddings_dict[protein_id]
+        pchembl_score = self.pchembl_scores[idx]
+        return drug_graph, protein_embedding, pchembl_score
 
 
 if __name__ == '__main__':
