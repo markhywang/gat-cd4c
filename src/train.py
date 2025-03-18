@@ -6,7 +6,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 from model import GraphAttentionNetwork
-from dataset import DrugProteinDataset
+from utils.dataset import DrugProteinDataset
 
 
 def train_model(args: argparse.Namespace) -> None:
