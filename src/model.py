@@ -48,6 +48,7 @@ class GraphAttentionLayer(nn.Module):
         self.head_size = out_features // num_attn_heads
         self.attn_matrix = nn.Parameter(torch.empty((num_attn_heads, 2 * self.head_size + num_edge_features)))
         self.attn_dropout = nn.Dropout(0.2)
+        self.attn_leaky_relu = nn.LeakyReLU(0.2)
 
         # Final MLP layer because apparently that's what every person does in papers
         self.projection_dropout = nn.Dropout(0.2)
@@ -58,19 +59,30 @@ class GraphAttentionLayer(nn.Module):
         nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
 
     def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # Initial node_features shape: [B, N, F_in]
         node_features, edge_features, adjacency_matrix = x
         batch_size, num_nodes, num_node_features = node_features.shape
+
+        # [B, N, F_in] -> [B, N, F_out]
         new_node_features = self.projection(self.layer_norm_1(node_features))
 
         # Split the node_features for every attention head.
+        # [B, N, F_out] -> [B, N, num_heads, F_out // num_heads]
         new_node_features = new_node_features.view(batch_size, num_nodes, self.num_attn_heads, -1)
 
+        # attn_coeffs shape: [B, N, N, num_heads]
         attn_coeffs = self._compute_attn_coeffs(new_node_features, edge_features, adjacency_matrix, num_nodes)
+
+        # [B, N, num_heads, F_out // num_geads] -> [B, N, F_out]
         new_node_features = self._execute_message_passing(new_node_features, attn_coeffs, batch_size, num_nodes)
 
+        # Do final projection and dropout
+        # The shape is still [B, N, F_out]
         new_node_features = self.out_projection(new_node_features)
         new_node_features = self.projection_dropout(new_node_features)
 
+        # Finally, perform another LeakyReLU if required
+        # The shape is still [B, N, F_out]
         if self.use_leaky_relu:
             new_node_features = self.leaky_relu(self.layer_norm_2(new_node_features))
 
@@ -78,33 +90,58 @@ class GraphAttentionLayer(nn.Module):
 
     def _compute_attn_coeffs(self, node_features: torch.Tensor, edge_features: torch.Tensor,
                              adjacency_matrix: torch.Tensor, num_nodes: int) -> torch.Tensor:
-        # Repeat along the 3rd dimension. This will create a tensor of shape [1, num_nodes,
-        # num_nodes, num_node_features].
+        """
+        Input node_features shape: [B, N, num_heads, F_out // num_heads]
+        """
+        # [B, N, num_heads, F_out // num_heads] -> [B, N, N, num_heads, F_out // num_heads]
         row_node_features = node_features.unsqueeze(2).repeat(1, 1, num_nodes, 1, 1)
-        # Repeat along the 2nd dimension. This will create a tensor of shape [1, num_nodes,
-        # num_nodes, num_node_features].
-        col_node_features = row_node_features.swapaxes(1, 2)
-        # Repeat along the 4th dimension (create one copy per attention head).
+
+        # [B, N, N, num_heads, F_out // num_heads] -> [B, N, N, num_heads, F_out // num_heads]
+        # Although dimensions are the same, however 2nd and 3rd dimension are transposed
+        col_node_features = row_node_features.transpose(1, 2)
+
+        # [B, N, N, F_edge] -> [B, N, N, num_heads, F_edge]
         unsqueezed_edge_features = edge_features.unsqueeze(3).repeat(1, 1, 1, self.num_attn_heads, 1)
 
+        # [B, N, N, num_heads, 2 * (F_out // num_heads) + F_edge]
         attn_input = torch.cat((row_node_features, col_node_features, unsqueezed_edge_features), dim=4)
-        attn_logits = torch.einsum('bnmax, ax -> bnma', attn_input, self.attn_matrix)
 
-        # Add a 4th dimension to the adjacency matrix and duplicate it over that dimension for every attention head.
-        # Then, apply the mask to the attention logits.
-        reshaped_adjacency_matrix = adjacency_matrix.unsqueeze(3).repeat(1, 1, 1, self.num_attn_heads)
-        attn_logits[reshaped_adjacency_matrix == 0] = float('-inf')
+        # [B, N, N, num_heads, 2 * (F_out // num_heads) + F_edge] @ [2 * (F_out // num_heads) + F_edge, num_heads]
+        # --> [B, N, N, num_heads, num_heads]
+        attn_logits = attn_input @ self.attn_matrix.transpose(0, 1)
 
+        # [B, N, N, num_heads, num_heads] -> [B, N, N, num_heads]
+        attn_logits = attn_logits.sum(dim=-1)
+
+        # [B, N, N] -> [B, N, N, 1]
+        reshaped_adjacency_matrix = adjacency_matrix.unsqueeze(-1)
+        
+        # Apply attention masking, similar to that of autoregression
+        # The shape is still [B, N, N, num_heads]
+        attn_logits = attn_logits.masked_fill(reshaped_adjacency_matrix == 0, float('-inf'))
+
+        # Use LeakyReLU then normalize all values using softmax
+        # The shape is still [B, N, N, num_heads]
+        attn_logits = self.attn_leaky_relu(attn_logits)
         attn_coeffs = F.softmax(attn_logits, dim=2)
 
         # Andrej Karpathy does this, so I guess it works (not sure why)
+        # The shape is still [B, N, N, num_heads]
         attn_coeffs = self.attn_dropout(attn_coeffs)
 
+        # Final shape: [B, N, N, num_heads]
         return attn_coeffs
 
     def _execute_message_passing(self, node_features: torch.Tensor, attn_coeffs: torch.Tensor,
                                  batch_size: int, num_nodes: int) -> torch.Tensor:
+        """
+        node_features shape: [B, N, num_heads, F_out // num_heads]
+        attn_coeffs shape:   [B, N,    N     ,     num_heads     ]
+        """
+        # [B, N, num_heads, F_out // num_heads] EINSUM [B, N, N, num_heads]
+        # -> [B, N, num_heads, F_out // num_heads]
         new_node_features = torch.einsum('bmax, bnma -> bnax', node_features, attn_coeffs)
+
         # Concatenate output for different attention heads together.
-        new_node_features = new_node_features.view(batch_size, num_nodes, -1)
-        return new_node_features
+        # [B, N, num_heads, F_out // num_heads] -> [B, N, F_out]
+        return new_node_features.view(batch_size, num_nodes, -1)
