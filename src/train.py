@@ -1,11 +1,12 @@
 import argparse
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
-import torch.nn.functional as F
+import torch.nn as nn
 
 from model import GraphAttentionNetwork
 from utils.dataset import DrugProteinDataset
@@ -16,8 +17,35 @@ def train_model(args: argparse.Namespace) -> None:
     model = GraphAttentionNetwork(333, 1, 16,
                                   args.hidden_size, args.num_layers, args.num_attn_heads)
     train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed)
-    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    # Initialize the Huber loss function.
+    loss_func = nn.SmoothL1Loss(beta=args.huber_beta)
+
+    for epoch in range(args.max_epochs):
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.max_epochs}", leave=True)
+        avg_loss = run_training_epoch(progress_bar, optimizer, model, loss_func)
+        print(f"Epoch {epoch + 1}/{args.max_epochs} completed: avg. loss = {round(avg_loss, 5)}")
+
+
+def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn.Module,
+                       loss_func: nn.Module) -> float:
+    # Ensure model is in training mode.
+    model.train()
+
+    training_loss = []
+    for batch_data in progress_bar:
+        node_features, edge_features, adjacency_matrix, pchembl_score = batch_data
+        pred = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
+        loss = loss_func(pred, pchembl_score)
+        training_loss.append(float(loss))
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    avg_loss = sum(training_loss) / len(training_loss)
+    return avg_loss
 
 
 def load_data(data_path: str, seed: int) -> tuple[Dataset, Dataset, Dataset]:
@@ -64,8 +92,8 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, required=False, default=0,
                         help="The seed used to control any stochastic operations")
     # Loss parameters
-    parser.add_argument("--huber_delta", type=float, required=False, default=0.2,
-                        help="Delta parameter for Huber loss function")
+    parser.add_argument("--huber_beta", type=float, required=False, default=1.0,
+                        help="Beta parameter for Huber loss function")
     # Optimizer paramters
     parser.add_argument("--weight_decay", type=float, required=False, default=1e-3,
                         help="Weight decay for optimizer")
@@ -74,9 +102,9 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scheduler_rate", type=int, required=False, default=5,
                         help="Number of epochs before reducing the learning rate")
     # Model parameters
-    parser.add_argument("--hidden_size", type=int, required=False, default=256,
+    parser.add_argument("--hidden_size", type=int, required=False, default=32,
                         help="The size of embeddings for hidden layers")
-    parser.add_argument("--num_layers", type=int, required=False, default=16,
+    parser.add_argument("--num_layers", type=int, required=False, default=4,
                         help="The number of graph attention layers to use")
     parser.add_argument("--num_attn_heads", type=int, required=False, default=8,
                         help="The number of attention heads to use for every attention block")
@@ -87,8 +115,6 @@ def get_parser() -> argparse.ArgumentParser:
     # Output paramters
     parser.add_argument("--plot_steps", type=int, required=False, default=1,
                         help="Number of batches represented by each data point on the plots")
-    parser.add_argument("--print_steps", type=int, required=False, default=1,
-                        help="Number of batches before printing loss")
     return parser
 
 
