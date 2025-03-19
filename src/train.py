@@ -16,16 +16,20 @@ def train_model(args: argparse.Namespace) -> None:
     # TODO - remove hard-coded specifications for the model
     model = GraphAttentionNetwork(333, 1, 16,
                                   args.hidden_size, args.num_layers, args.num_attn_heads)
-    train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed)
+    train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.use_small_dataset)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    validation_loader = DataLoader(validation_dataset, batch_size=len(validation_dataset), shuffle=False)
+
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # Initialize the Huber loss function.
     loss_func = nn.SmoothL1Loss(beta=args.huber_beta)
 
     for epoch in range(args.max_epochs):
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.max_epochs}", leave=True)
-        avg_loss = run_training_epoch(progress_bar, optimizer, model, loss_func)
-        print(f"Epoch {epoch + 1}/{args.max_epochs} completed: avg. loss = {round(avg_loss, 5)}")
+        avg_train_loss = run_training_epoch(progress_bar, optimizer, model, loss_func)
+        avg_validation_loss = get_validation_metrics(validation_loader, model, loss_func)
+        print(f"Epoch {epoch + 1}/{args.max_epochs} completed: train loss = {round(avg_train_loss, 5)}, "
+              f"validation loss = {round(avg_validation_loss, 5)}")
 
 
 def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn.Module,
@@ -48,8 +52,19 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
     return avg_loss
 
 
-def load_data(data_path: str, seed: int) -> tuple[Dataset, Dataset, Dataset]:
-    data_df = pd.read_csv(f'{data_path}/filtered_cancer_all.csv')
+def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss_func: nn.Module) -> float:
+    model.eval()
+
+    node_features, edge_features, adjacency_matrix, pchembl_scores = next(iter(validation_loader))
+    preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
+    loss = loss_func(preds, pchembl_scores)
+
+    return float(loss)
+
+
+def load_data(data_path: str, seed: int, use_small_dataset: bool) -> tuple[Dataset, Dataset, Dataset]:
+    dataset_file = 'filtered_cancer_small.csv' if use_small_dataset else 'filtered_cancer_all.csv'
+    data_df = pd.read_csv(f'{data_path}/{dataset_file}')
     protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
 
     # Create a column that combines the protein ID and whether there was a significant drug-protein
@@ -80,6 +95,8 @@ def load_data(data_path: str, seed: int) -> tuple[Dataset, Dataset, Dataset]:
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--use_small_dataset", action="store_true",
+                        help="Whether to use the small dataset instead of the entire dataset")
     parser.add_argument("--batch_size", type=int, required=False, default=64,
                         help="Batch size for data loader")
     parser.add_argument("--stoppage_epochs", type=int, required=False, default=5,
