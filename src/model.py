@@ -18,17 +18,60 @@ class GraphAttentionNetwork(nn.Module):
             layers.append(GraphAttentionLayer(hidden_size, out_features, num_edge_features, use_leaky_relu=False))
 
         self.gat_layers = nn.Sequential(*layers)
+        self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, 256)
 
     def forward(self, node_features, edge_features, adjacency_matrix) -> torch.Tensor:
         # Initial node feature shape: [B, N, F_in]
         input_tuple = (node_features, edge_features, adjacency_matrix)
 
         # [B, N, F_in] -> [B, N, F_out]
-        final_node_features, _, _ = self.gat_layers(input_tuple)
-
+        updated_node_features, _, _ = self.gat_layers(input_tuple)
+        
+        # Perform global attention pooling for final learning process
         # [B, N, F_out] -> [B, 1]
-        pchembl_scores = final_node_features.squeeze(2).sum(dim=1)
+        pchembl_scores = self.global_attn_pooling(updated_node_features)
+
+        # Normalize and scale pChEMBL scores to (0, 14)
+        # The shape is still [B, 1]
+        pchembl_scores = F.softplus(pchembl_scores)
+        pchembl_scores = pchembl_scores * (14 / F.softplus(torch.tensor(1.0)))
+
+        # Final shape: [B, 1]
         return pchembl_scores
+
+
+class GlobalAttentionPooling(nn.Module):
+    def __init__(self, in_features: int, out_features: int = 1, hidden_dim: int = 256) -> None:
+        super().__init__()
+
+        self.global_attn = nn.Linear(in_features, 1)
+        self.dropout = nn.Dropout(0.2)
+        
+        self.final_projection = nn.Sequential(
+            nn.Linear(in_features, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, out_features)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        The input node features (x) has shape: [B, N, F_out]
+        """
+        attn_logits = self.attn(x)  # [B, N, 1]
+        attn_scores = F.softmax(attn_logits, dim=1)  # Normalize across nodes
+        
+        # Apply dropout to attention scores
+        attn_scores = self.dropout(attn_scores)  
+        
+        # [B, 1, N] @ [B, N, F_out] -> [B, 1, F_out]
+        pooled_features = attn_scores.transpose(1, 2) @ x
+
+        # [B, 1, F_out] -> [B, F_out]
+        pooled_features = pooled_features.squeeze(1)
+        pooled_features = self.dropout(pooled_features)
+
+        # [B, F_out] -> [B, 1]
+        return self.final_projection(pooled_features)
 
 
 class GraphAttentionLayer(nn.Module):
@@ -47,18 +90,19 @@ class GraphAttentionLayer(nn.Module):
         self.num_attn_heads = num_attn_heads
         self.head_size = out_features // num_attn_heads
         self.attn_matrix = nn.Parameter(torch.empty((num_attn_heads, 2 * self.head_size + num_edge_features)))
-        self.attn_dropout = nn.Dropout(0.2)
         self.attn_leaky_relu = nn.LeakyReLU(0.2)
 
         # Final MLP layer because apparently that's what every person does in papers
-        self.projection_dropout = nn.Dropout(0.2)
         self.out_projection = nn.Linear(out_features, out_features)
+
+        self.dropout = nn.Dropout(0.2)
 
         # Initialize the projection weights and attention matrix using a Xavier uniform distribution.
         nn.init.xavier_uniform_(self.projection.weight.data, gain=math.sqrt(2))
         nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
 
-    def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) \
+            -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # Initial node_features shape: [B, N, F_in]
         node_features, edge_features, adjacency_matrix = x
         batch_size, num_nodes, num_node_features = node_features.shape
@@ -79,7 +123,7 @@ class GraphAttentionLayer(nn.Module):
         # Do final projection and dropout
         # The shape is still [B, N, F_out]
         new_node_features = self.out_projection(new_node_features)
-        new_node_features = self.projection_dropout(new_node_features)
+        new_node_features = self.dropout(new_node_features)
 
         # Finally, perform another LeakyReLU if required
         # The shape is still [B, N, F_out]
@@ -115,7 +159,7 @@ class GraphAttentionLayer(nn.Module):
 
         # [B, N, N] -> [B, N, N, 1]
         reshaped_adjacency_matrix = adjacency_matrix.unsqueeze(-1)
-        
+
         # Apply attention masking, similar to that of autoregression
         # The shape is still [B, N, N, num_heads]
         attn_logits = attn_logits.masked_fill(reshaped_adjacency_matrix == 0, float('-inf'))
@@ -127,7 +171,7 @@ class GraphAttentionLayer(nn.Module):
 
         # Andrej Karpathy does this, so I guess it works (not sure why)
         # The shape is still [B, N, N, num_heads]
-        attn_coeffs = self.attn_dropout(attn_coeffs)
+        attn_coeffs = self.dropout(attn_coeffs)
 
         # Final shape: [B, N, N, num_heads]
         return attn_coeffs

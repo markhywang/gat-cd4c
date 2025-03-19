@@ -1,0 +1,52 @@
+# Handle line endings properly
+* text=auto
+
+# Mark all binary files
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.tar  binary
+*.gz   binary
+*.7z   binary
+*.mp3  binary
+*.mp4  binary
+*.mov  binary
+*.avi  binary
+*.exe  binary
+*.dll  binary
+
+# Prevent Git from diffing/generated files
+*.min.js  -diff
+*.min.css -diff
+*.lock    -diff
+*.log     -diff
+*.svg     -diff
+*.json    -diff
+*.csv     -diff
+
+# Ignore backups and editor files
+*.swp  -diff
+*.swo  -diff
+*.bak  -diff
+*.tmp  -diff
+
+# Normalizing UTF-8 encoding
+*.txt  text eol=lf
+*.md   text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+*.js   text eol=lf
+*.py   text eol=lf
+*.java text eol=lf
+*.c    text eol=lf
+*.cpp  text eol=lf
+*.h    text eol=lf
+*.sh   text eol=lf
+
+# Ensure shell scripts are executable
+*.sh text eol=lf
+*.sh chmod=+x

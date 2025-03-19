@@ -1,0 +1,350 @@
+\documentclass[fontsize=11pt]{article}
+\usepackage{amsmath}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[T1]{fontenc}
+
+\lstset{
+  language=Python,
+  basicstyle=\small\ttfamily,
+  columns=fullflexible,
+  showstringspaces=false,
+  breaklines=true,
+  keywordstyle=\color{blue}\bfseries,
+  commentstyle=\color{gray},
+  stringstyle=\color{teal},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  frame=single
+}
+
+\title{Applying GAT for Drug-Target Interaction Prediction}
+\author{Albert Guo, Adarsh Padalia, Yunzhe Qiao, Mark Wang}
+\date{Wednesday, March 5, 2025}
+
+\begin{document}
+\maketitle
+
+\section*{Problem Description and Research Question}
+Drug-Target Interaction (DTI) prediction is an essential process in the development of new drugs. However, the existing drug development process relies on experimental verification, which requires high costs and long development times. Recently, artificial intelligence (AI)-based molecular graph analysis has been playing an important role in the new drug screening process, and in particular, Graph Neural Networks (GNNs) have been attracting attention as a powerful tool for effectively learning the structural information of molecules.
+\\~\\
+The CandidateDrug4Cancer dataset contains 29 cancer-related target proteins, 54,869 drug molecules, and a total of 73,770 drug-protein interaction data. Molecules are expressed in the form of graphs, with atoms as nodes and chemical bonds as edges. The goal of this study is to analyze these molecular graphs and predict whether a specific drug is likely to have a significant biological interaction with a cancer target protein.
+\\~\\
+\textbf{In this study, our objective is to verify whether Graph Attention Networks (GATs) show improved DTI prediction performance compared to existing traditional techniques (e.g., Morgan Fingerprints + XGBoost).} We will implement a GAT with PyTorch. Furthermore, we will compare our results against existing molecular fingerprint-based techniques, and analyze whether the GAT model provides higher prediction accuracy. Lastly, we will graphically present the efficacy of a given drug (as evaluated by our GAT model).
+
+\section*{Computational Plan}
+
+To implement this, we divide the computing process into the following steps. Data Processing, Graph Construction, Neural Network Model Architecture, Training Process, Evaluation, and Hyperparameter Tuning and Optimization.
+\begin{itemize}
+    \item \textbf{Data Processing} \subsubsection*{1.\quad Dataset Structure}
+Typically, each row in the interaction table provides the following columns:
+
+\begin{center}
+\begin{tabular}{|l|l|p{9cm}|}
+\hline
+\textbf{Column}       & \textbf{Type}    & \textbf{Description} \\
+\hline
+\texttt{ChEMBL\_ID} & String           & ChEMBL identifier of the compound (e.g., \texttt{CHEMBL123456}). \\
+\texttt{Target\_ID}   & String           & ChEMBL identifier of the target (e.g., \texttt{CHEMBL1824}). \\
+\texttt{pChEMBL\_Value} & Float         & $-\log_{10}$ of the measured IC\textsubscript{50}. \\
+\texttt{SMILES}       & String           & Chemical structure in SMILES format. \\
+\texttt{Protein}    & String            & Full amino acid sequence of the target protein. \\
+\texttt{Label} & Boolean & Binary indicator of active/inactive. \\ % defined by $p\text{ChEMBL} \ge 7.0.$\\
+\hline
+\end{tabular}
+\end{center}
+
+% \noindent
+% Note that the \texttt{Label} column is sometimes precomputed; if not, we derive it from
+% \texttt{pChEMBL\_Value} using a threshold of 7.0.
+
+\subsubsection*{2.\quad Equations for Label Computation and Molecular Features}
+
+\begin{quote}
+
+    \textbf{2.1 pChEMBL and Activity Label}
+    
+    \quad The dataset leverages a $p\text{ChEMBL}$ value, defined by:
+    \[
+        p\text{ChEMBL} \;=\; -\log_{10}\bigl(\text{IC}_{50} \text{ in molar}\bigr),
+    \]
+    which transforms IC\textsubscript{50} from molar units into a logarithmic scale. 
+    
+    A threshold $\texttt{pChEMBL} \ge 7.0$ (corresponding to IC\textsubscript{50} $\leq 100\text{ nM}$) 
+    denotes a \emph{potent} interaction. Hence, we define the activity label as:
+    
+    \[
+        \text{Activity\_Label} \;=\; 
+        \begin{cases}
+        1, & \text{if } p\text{ChEMBL} \ge 7.0,\\
+        0, & \text{otherwise}.
+        \end{cases}
+    \]
+    
+    \textbf{2.2 Molecular Graph Features}
+    
+    \quad For each molecule, we parse the SMILES string into a graph. Let $V = \{v_1, v_2, \dots, v_n\}$ 
+    be the set of atoms, and $E = \{(v_i, v_j)\,\mid\, \text{bond exists between $v_i$ and $v_j$}\}$ the set of edges. \\
+    
+    Each atom node $v_i$ has features such as:
+    \begin{quote}
+        \begin{itemize}
+            \item[1.] \emph{Atom Type} (atomic number)
+            \item[2.] \emph{Formal Charge}
+            \item[3.] \emph{Degree} (number of covalent bonds to $v_i$)
+            \item[4.] \emph{Hybridization} (e.g., sp, sp2, sp3)
+            \item[5.] \emph{Aromaticity}
+        \end{itemize}
+    \end{quote}
+    Each bond $(v_i, v_j)$ has features like:
+    \begin{quote}
+        \begin{itemize}
+            \item[1.] \emph{Bond Type} (Single, Double, Triple, Aromatic)
+            \item[2.] \emph{Conjugation}
+            \item[3.] \emph{Ring Membership}
+        \end{itemize}
+    \end{quote}
+
+\end{quote}
+
+\subsubsection*{3.\quad Data Preprocessing and Splitting}
+
+\begin{quote}
+    \textbf{Step 1: Loading Data.} We first read the CSV file that contain the compound--target interactions:
+    \begin{lstlisting}[language=Python]
+    import pandas as pd
+    
+    df = pd.read_csv("CandidateDrug4Cancer_full.csv") 
+    print(df.head())
+    \end{lstlisting}
+    
+    \noindent
+    \textbf{Step 2: Creating Activity Labels.} If the label is not already present, we define:
+    \begin{lstlisting}[language=Python]
+    df["Activity_Label"] = (df["pChEMBL_Value"] >= 7.0).astype(int)
+    \end{lstlisting}
+    
+    \noindent
+    \textbf{Step 3: Splitting into Train/Validation/Test.} We split randomly or by target:
+    \begin{lstlisting}[language=Python]
+    from sklearn.model_selection import train_test_split
+    
+    train_df, temp_df = train_test_split(df, test_size=0.3, stratify=df["Activity_Label"])
+    val_df, test_df   = train_test_split(temp_df, test_size=0.5, stratify=temp_df["Activity_Label"])
+    \end{lstlisting}
+\end{quote}
+
+\subsubsection*{4.\quad Graph Construction (Feature Computation)}
+Using RDKit, we convert each SMILES to a molecule and extract the heavy-atom graph:
+
+\begin{lstlisting}[language=Python]
+from rdkit import Chem
+from typing import Any
+
+def construct_molecular_graph(smiles_str: str) -> dict[str, list[Any]]:
+    mol = Chem.RemoveHs(Chem.MolFromSmiles(smiles_str)) # remove explicit H atoms
+
+    node_features = []
+    adjacency_list = []
+    edge_features = []
+
+    for atom in mol.GetAtoms():
+        feats = {
+            "atomic_num": atom.GetAtomicNum(),
+            "formal_charge": atom.GetFormalCharge(),
+            "degree": atom.GetDegree(),
+            "hybridization": str(atom.GetHybridization()),
+            "aromatic": int(atom.GetIsAromatic())
+        }
+        node_features.append(feats)
+
+    for bond in mol.GetBonds():
+        i = bond.GetBeginAtomIdx()
+        j = bond.GetEndAtomIdx()
+        bond_feat = {
+            "bond_type": str(bond.GetBondType()),
+            "conjugated": int(bond.GetIsConjugated()),
+            "ring": int(bond.IsInRing())
+        }
+        edge_features.append(((i,j), bond_feat))
+        # Undirected adjacency
+        adjacency_list.append((i, j))
+        adjacency_list.append((j, i))
+
+    return {
+        "node_features": node_features,
+        "edge_features": edge_features,
+        "adjacency_list": adjacency_list
+    }
+\end{lstlisting}
+
+\noindent
+\emph{Explanation:} We record atom-level descriptors (atomic number, formal charge, etc.) and 
+bond-level descriptors (bond type, conjugation, ring membership). The adjacency list is built
+from each bond pair (i, j). 
+% This structure can be fed into a graph neural network or converted 
+% into other GNN frameworks like PyTorch Geometric or DGL.
+
+    % \item \textbf{Dataset \& Graph Construction}
+    % \begin{itemize}
+    %     \item[1.] \texttt{CandidateDrug4Cancer} dataset contains 29 target protein, 54869 drug molecules, and 73770 known drug-target interaction pairs.
+    %     \item[2.] To visualize the data as a graph, each drug molecule is converted into a graph where atoms are nodes and chemical bonds are edges. We can utilize a cheminformatics library, like RDKit to parse molecular structures and generate the graph. Each atom node will carry revelant features, and each edge (bond) will have bond-specific features.
+    % \end{itemize}
+
+    % \item \textbf{Data Preprocessing}: Data preprocessing begins by splitting the entire dataset into training, validation, and test subsets. This approach ensures that each subset maintains a balanced distribution of positive and negative examples, allowing for accurate model evaluation. Any missing data is either removed or imputed, and continuous features are normalized so that they fall within a consistent range. This step helps the model converge more smoothly during training.
+
+    % \item \textbf{Feature Engineering}: Feature engineering focuses on both atom level and bond level descriptors. Atom-level features include atom type, valence, hybridization state, and and indicator for aromaticity. Bond level features capture whether a bond is a single, double, triple, or aromatic, as well as basic geometric properties such as bond length if available. On the protein side, a sequence-based embedding or basic amino acid composition can be used to represent target proteins, allowing the model to learn how chemical and biological features interact.
+
+    \item \textbf{Construct Graph Attention Network (GAT)}: The Graph Attention Network architecture first processes each drug’s molecular graph through multiple GAT layers. Within each GAT layer, a node updates its embedding by computing attention scores for its neighbors. These scores highlight the relative importance of different neighboring nodes, and multi-head attention further stabilizes learning by combining insights from multiple parallel attention mechanisms. After the message passing phase, a pooling operation generates a single embedding for the entire molecule, typically by taking a mean or weighted sum of node embeddings. The final output of the GAT model is the predicted pChEMBL for the drug-protein pair. \\
+    
+    \small \textbf{Remark: Graph Attention Network Equations}
+
+    \begin{itemize}
+            \item[$\circ$] Attention Coefficients: For each node $i$, we compute attention scores $a_{ij}$ toward each neighbor $j$ as follows:
+
+            \[
+                \alpha_{ij} \;=\;
+                \frac{\exp\!\Bigl(\mathrm{LeakyReLU}\bigl(\mathbf{a}^\mathsf{T}
+                    \bigl[\mathbf{W}\mathbf{h}_i \,\|\, \mathbf{W}\mathbf{h}_j\bigr]\bigr)\Bigr)}
+                     {\sum_{k \in \mathcal{N}(i)} \exp\!\Bigl(\mathrm{LeakyReLU}\bigl(\mathbf{a}^\mathsf{T}
+                       \bigl[\mathbf{W}\mathbf{h}_i \,\|\, \mathbf{W}\mathbf{h}_k\bigr]\bigr)\Bigr)},
+            \]
+
+            where $h_i$ is the current feature vector for node $i$, $W$ is a trainable weight matrix, $a$ is a learnable vector for the attention mechanism.
+
+            \item[$\circ$] After normalizing coefficients, we update the node representation: 
+
+            \[
+                \mathbf{h}_i' \;=\;
+                \sigma\!\Bigl(\sum_{j \in \mathcal{N}(i)}
+                      \alpha_{ij}\,\mathbf{W}\,\mathbf{h}_j\Bigr),
+            \]
+
+            where $\sigma$ is a non-linear activation function, in this project, we will use ReLU, for convenience.
+        \end{itemize}
+
+    \item \textbf{Training Process}: During training, the model uses Huber loss to predict whether a drug-protein pair is likely to bind. The Adam optimizer updates the network parameters, and regularization methods, such as dropout and weight decay, help the network generalize better. Early stopping is employed by monitoring the validation loss and halting training when performance ceases to improve, which avoids excessive overfitting.
+
+    \newpage
+
+    \item \textbf{Evaluation}
+    \begin{itemize}
+        \item[1.] Our study will compare the GAT-based approach against a baseline model that uses Morgan fingerprints to encode drug molecules. In the baseline method, circular fingerprints capture substructures around each atom, and a gradient boosting algorithm, like XGBoost, processes these representations together with simpler protein features. By evaluating the two approaches side by side, researchers can assess whether the structural awareness introduced by graph neural networks provides a significant performance boost over traditional fingerprint-based techniques.
+
+        \item[2.] Model performance is evaluated using multiple metrics to capture different aspects of prediction quality. First, the predicted pChEMBL scores will be converted to \texttt{Labels}. Then, we will compute the precision and recall of the model. The correct prediction rate is the simplest metric, but AUC-ROC and AUC-PR often yield deeper insight, especially in cases with class imbalance. F1 score summarizes the balance between precision and recall, thus highlighting how effectively the model identifies correct interactions while minimizing false positives.
+
+        \small \textbf{Remark: Object-oriented Graph class implementation}
+
+        % \begin{itemize}
+        %     \item[$\circ$] Attention Coefficients: For each node $i$, we compute attention scores $a_{ij}$ toward each neighbor $j$ as follows:
+
+        %     \[
+        %         \alpha_{ij} \;=\;
+        %         \frac{\exp\!\Bigl(\mathrm{LeakyReLU}\bigl(\mathbf{a}^\mathsf{T}
+        %             \bigl[\mathbf{W}\mathbf{h}_i \,\|\, \mathbf{W}\mathbf{h}_j\bigr]\bigr)\Bigr)}
+        %              {\sum_{k \in \mathcal{N}(i)} \exp\!\Bigl(\mathrm{LeakyReLU}\bigl(\mathbf{a}^\mathsf{T}
+        %                \bigl[\mathbf{W}\mathbf{h}_i \,\|\, \mathbf{W}\mathbf{h}_k\bigr]\bigr)\Bigr)},
+        %     \]
+
+        %     where $h_i$ is the current feature vector for node $i$, $W$ is a trainable weight matrix, $a$ is a learnable vector for the attention mechanism.
+
+        %     \item[$\circ$] After normalizing coefficients, we update the node representation: 
+
+        %     \[
+        %         \mathbf{h}_i' \;=\;
+        %         \sigma\!\Bigl(\sum_{j \in \mathcal{N}(i)}
+        %               \alpha_{ij}\,\mathbf{W}\,\mathbf{h}_j\Bigr),
+        %     \]
+
+        %     where $\sigma$ is a non-linear activation function, in this project, we will use ReLU, for convenience.
+        % \end{itemize}
+
+        
+        \quad An object-oriented Graph class is implemented to simplify the process of storing and retrieving molecular structures. This class keeps track of adjacency lists, node features, and bond attributes. It also offers methods for adding nodes, adding edges, and retrieving neighbor information. By encoding all relevant data in a well-structured manner, the Graph class makes it easier to batch and feed molecules into the GAT. (see Listing 1)
+
+        \quad In addition, class \texttt{GATModel} encapsulating the GAT layers, along with fully connected layers for the final prediction. It will provide a \texttt{forward(drug\_graph, protein\_embedding)} method returning an interaction probability. Another \texttt{Trainer} class responsible for coordinating the training loop, including batch processing, loss computation, backpropagation, and metric logging will be implemented along with \texttt{GATModel} class (see Listing 2).
+    \end{itemize}
+
+    \item \textbf{Hypermaterater tuning}: Hyperparameter tuning explores a range of values for the learning rate, hidden dimension, attention heads, and dropout rates. A systematic approach, such as grid or Bayesian search, helps identify settings that maximize validation performance while preserving generalization. Additional experiments can examine how the number of GAT layers affects the model’s ability to capture higher-order structural relationships within each molecule.
+
+    \item \textbf{Visualizing the Results}: If we are successful, we will have trained a model that is capable of determining the strength of a drug's biological interaction with a target protein. Given such a model, it is possible to determine the specific nodes and edges of the drug molecule that improve or impair the drug's efficacy using Feature Activation Maps. Given a drug/protein pair, we will construct a graphical representation of the drug molecule (using a library like \texttt{networkx}) that utilizes colour to show the relative contribution of different atoms and bonds to the efficacy of the drug.
+    
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption={Python implementation of a Graph class for molecular data}, label={lst:graph_class}]
+class Graph:
+    """
+    A Graph class to represent a molecular graph with atom-level and bond-level features.
+
+    Instance Attributes:
+        - neightbors: A dictionary mapping node IDs to a list of neighboring node IDs.
+        - node_features: A dictionary mapping node IDs to a dictionary of that node's features.
+        - edge_features: A dictionary mapping (node_i, node_j) to a dictionary of bond-level features.
+    """
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Scratch implementation of \texttt{GATModel} and \texttt{Trainer} classes}, label={lst:listing2}]
+class GATModel:
+    """
+    A model class containing the multi-head GAT architecture and downstream fully connected layers for final prediction.
+    
+    Instance Attributes:
+        - num_heads: Number of attention heads.
+        - hidden_dim: Dimensionality of the hidden layers.
+        - gat_layers: A collection of GAT layers.
+        - fc_layers: Fully connected layers to combine graph embeddings with protein features for final prediction.
+    """
+
+
+class Trainer:
+    """
+    A class used for coordinating the training loop, including data loading, backpropagation, and logging.
+    
+    Instance Attributes:
+        - model: The GAT-based model to be trained.
+        - optimizer: The optimizer used for parameter updates.
+        - criterion: The loss function for computing training loss.
+        - metrics: A collection of metric functions for evaluation.
+        - device: The device (CPU or GPU) on which training is performed.
+    """
+\end{lstlisting}
+
+\section*{References}
+
+\noindent
+\hangindent=2em
+Kingma, D. P., \& Ba, J. (2014). Adam: A method for stochastic optimization. \textit{arXiv preprint arXiv:1412.6980.}
+\\
+
+\noindent
+\hangindent=2em
+Liao, Y., Gao, Y., \& Zhang, W. (2023). Feature activation map: Visual explanation of deep learning models for image classification. \textit{arXiv preprint arXiv:2307.05017.}
+\\
+
+\noindent
+\hangindent=2em
+Raschka, S. (2014). An overview of general performance metrics of binary classifier systems. \textit{arXiv preprint arXiv:1410.5330.}
+\\
+
+\noindent
+\hangindent=2em
+RDKit. (2023). Open-source cheminformatics. \textit{Retrieved from https://www.rdkit.org.}
+\\
+
+\noindent
+\hangindent=2em
+Veličković, P., Cucurull, G., Casanova, A., Romero, A., Lio, P., \& Bengio, Y. (2017). Graph attention networks. \textit{arXiv preprint arXiv:1710.10903.}
+\\
+
+\noindent
+\hangindent=2em
+Ye, X., Li, Z., Ma, F., Yi, Z., Li, P., Wang, J., ... \& Xie, G. (2022). CandidateDrug4Cancer: An open molecular graph learning benchmark on drug discovery for cancer. \textit{arXiv preprint arXiv:2203.00836.}
+
+% NOTE: LaTeX does have a built-in way of generating references automatically,
+% but it's a bit tricky to use so we STRONGLY recommend writing your references
+% manually, using a standard academic format like APA or MLA.
+% (E.g., https://owl.purdue.edu/owl/research_and_citation/apa_style/apa_formatting_and_style_guide/general_format.html)
+
+\end{document}

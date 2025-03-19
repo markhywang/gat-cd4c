@@ -1,113 +1,66 @@
-from rdkit import Chem
-from typing import Any
+import argparse
+
 import torch
+from torch.utils.data import DataLoader
+import torch.optim as optim
+import torch.nn.functional as F
 
 from model import GraphAttentionNetwork
+from utils.dataset import DrugProteinDataset
 
 
-class DataLoader:
-    def __init__(self) -> None:
-        pass
+def train_model(args: argparse.Namespace) -> None:
+    # TODO - remove hard-coded specifications for the model
+    # TODO - split dataset into train, validation, and test
+    model = GraphAttentionNetwork(333, 1, 16,
+                                  args.hidden_size, args.num_layers, args.num_attn_heads)
+    dataset = DrugProteinDataset(args.data_path)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    def __iter__(self):
-        pass
 
-
-class DrugMolecule:
-    def __init__(self, smiles_str: str) -> None:
-        self.node_features, self.edge_features, self.adjacency_list = self._construct_molecular_graph(smiles_str)
-        self.num_nodes = len(self.node_features)
-
-        self.node_tensor, self.edge_tensor, self.adjacency_tensor = self._tensor_preprocess()
-
-    def _construct_molecular_graph(self, smiles_str: str) -> tuple[list[Any], list[Any], list[Any]]:
-        mol = Chem.RemoveHs(Chem.MolFromSmiles(smiles_str))  # remove explicit H atoms
-
-        node_features = []
-        adjacency_list = []
-        edge_features = []
-
-        for atom in mol.GetAtoms():
-            feats = {
-                "atomic_num": atom.GetAtomicNum(),
-                "formal_charge": atom.GetFormalCharge(),
-                "degree": atom.GetDegree(),
-                "hybridization": str(atom.GetHybridization()),
-                "aromatic": int(atom.GetIsAromatic())
-            }
-            node_features.append(feats)
-
-        for bond in mol.GetBonds():
-            i = bond.GetBeginAtomIdx()
-            j = bond.GetEndAtomIdx()
-            bond_feat = {
-                "bond_type": str(bond.GetBondType()),
-                "conjugated": int(bond.GetIsConjugated()),
-                "ring": int(bond.IsInRing())
-            }
-            edge_features.append(((i, j), bond_feat))
-            # Undirected adjacency
-            adjacency_list.append((i, j))
-            adjacency_list.append((j, i))
-
-        return node_features, edge_features, adjacency_list
-
-    def _tensor_preprocess(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        processed_node_features = []
-        for features in self.node_features:
-            processed_node_features.append(self._process_node_features(features))
-        node_tensor = torch.tensor(processed_node_features)
-        node_tensor = node_tensor.type(torch.float32)
-
-        # 14 different bond types plus 2 numerical variables
-        num_edge_features = 16
-        edge_tensor = torch.zeros((self.num_nodes, self.num_nodes, num_edge_features))
-        for (node_1, node_2), features in self.edge_features:
-            edge_tensor[node_1, node_2, :] = torch.tensor(self._process_edge_features(features))
-        edge_tensor = edge_tensor.type(torch.float32)
-
-        adjacency_tensor = torch.diag(torch.ones(self.num_nodes))
-        for node_1, node_2 in self.adjacency_list:
-            adjacency_tensor[node_1, node_2] = 1
-        adjacency_tensor = adjacency_tensor.type(torch.float32)
-
-        return node_tensor, edge_tensor, adjacency_tensor
-
-    def _process_node_features(self, features: dict[str, int | str]) -> list[int]:
-        hybridization_encoder_dict = {
-            "UNSPECIFIED": 0, "S": 1, "SP": 2, "SP2": 3, "SP3": 4,
-            "SP2D": 5, "SP3D": 6, "SP3D2": 7, "OTHER": 8
-        }
-
-        processed_features = []
-        for key, val in features.items():
-            if key == 'hybridization':
-                one_hot_list = [0] * len(hybridization_encoder_dict)
-                one_hot_list[hybridization_encoder_dict[val]] = 1
-                processed_features.extend(one_hot_list)
-            else:
-                processed_features.append(val)
-        return processed_features
-
-    def _process_edge_features(self, features: dict[str, int | str]) -> list[int]:
-        bond_type_encoder_dict = {
-            "UNSPECIFIED": 0, "SINGLE": 1, "DOUBLE": 2, "TRIPLE": 3, "AROMATIC": 4,
-            "IONIC": 5, "HYDROGEN": 6, "THREECENTER": 7, "DATIVEONE": 8,
-            "DATIVE": 9, "DATIVEL": 10, "DATIVER": 11, "OTHER": 12, "ZERO": 13
-        }
-
-        processed_features = []
-        for key, val in features.items():
-            if key == 'bond_type':
-                one_hot_list = [0] * len(bond_type_encoder_dict)
-                one_hot_list[bond_type_encoder_dict[val]] = 1
-                processed_features.extend(one_hot_list)
-            else:
-                processed_features.append(val)
-        return processed_features
+def get_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--batch_size", type=int, required=False, default=64,
+                        help="Batch size for data loader")
+    parser.add_argument("--stoppage_epochs", type=int, required=False, default=5,
+                        help="Number of consecutive epochs with no improvement to validation "
+                             "loss before stopping training")
+    parser.add_argument("--max_epochs", type=int, required=False, default=128,
+                        help="Maximum number of epochs to run training")
+    parser.add_argument("--data_path", type=str, required=False, default='../data',
+                        help="Path to the folder with the data")
+    # Loss parameters
+    parser.add_argument("--huber_delta", type=float, required=False, default=0.2,
+                        help="Delta parameter for Huber loss function")
+    # Optimizer paramters
+    parser.add_argument("--weight_decay", type=float, required=False, default=1e-3,
+                        help="Weight decay for optimizer")
+    parser.add_argument("--lr", type=float, required=False, default=3e-4,
+                        help="Learning rate")
+    parser.add_argument("--scheduler_rate", type=int, required=False, default=5,
+                        help="Number of epochs before reducing the learning rate")
+    # Model parameters
+    parser.add_argument("--hidden_size", type=int, required=False, default=256,
+                        help="The size of embeddings for hidden layers")
+    parser.add_argument("--num_layers", type=int, required=False, default=16,
+                        help="The number of graph attention layers to use")
+    parser.add_argument("--num_attn_heads", type=int, required=False, default=8,
+                        help="The number of attention heads to use for every attention block")
+    parser.add_argument("--dropout", type=float, required=False, default=0.2,
+                        help="Dropout percentage for graph attention layers")
+    parser.add_argument("--leaky_relu_slope", type=float, required=False, default=0.2,
+                        help="The slope for the Leaky ReLU activation function")
+    # Output paramters
+    parser.add_argument("--plot_steps", type=int, required=False, default=1,
+                        help="Number of batches represented by each data point on the plots")
+    parser.add_argument("--print_steps", type=int, required=False, default=1,
+                        help="Number of batches before printing loss")
+    return parser
 
 
 if __name__ == '__main__':
-    mol = DrugMolecule("O=C(NO)[C@H]1C[C@@H](OC(=O)N2CCCC2)CN[C@@H]1C(=O)N1CC=C(c2ccccc2)CC1")
-    model = GraphAttentionNetwork(13, 1, 16, 20, 4, 2)
-    print(model(mol.node_tensor.unsqueeze(0), mol.edge_tensor.unsqueeze(0), mol.adjacency_tensor.unsqueeze(0)))
+    arg_parser = get_parser()
+    training_args = arg_parser.parse_args()
+
+    train_model(training_args)

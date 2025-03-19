@@ -1,7 +1,14 @@
 torch
+torchvision
 numpy
 pandas
 scikit-learn
 rdkit
 typing
 matplotlib
+transformers
+tqdm
+argparse
+tensorboard
+jupyterlab
+notebook
