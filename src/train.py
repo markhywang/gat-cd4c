@@ -1,7 +1,8 @@
 import argparse
+import pandas as pd
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import torch.nn.functional as F
 
@@ -14,9 +15,16 @@ def train_model(args: argparse.Namespace) -> None:
     # TODO - split dataset into train, validation, and test
     model = GraphAttentionNetwork(333, 1, 16,
                                   args.hidden_size, args.num_layers, args.num_attn_heads)
-    dataset = DrugProteinDataset(args.data_path)
+    dataset = load_data(args.data_path)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+
+def load_data(data_path: str) -> Dataset:
+    data_df = pd.read_csv(f'{data_path}/filtered_cancer_all.csv')
+    protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
+    dataset = DrugProteinDataset(data_df, protein_embeddings_df)
+    return dataset
 
 
 def get_parser() -> argparse.ArgumentParser:

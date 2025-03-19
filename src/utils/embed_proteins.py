@@ -44,4 +44,4 @@ def embed_proteins(input_filepath: str, output_filepath: str) -> None:
 if __name__ == '__main__':
     os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
     torchvision.disable_beta_transforms_warning()
-    embed_proteins('../assets/cancer_all.csv', '../assets/protein_embeddings.csv')
+    embed_proteins('../../data/filtered_cancer_all.csv', '../../data/protein_embeddings.csv')
