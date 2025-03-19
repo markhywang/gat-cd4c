@@ -26,7 +26,7 @@ class GraphAttentionNetwork(nn.Module):
 
         # [B, N, F_in] -> [B, N, F_out]
         updated_node_features, _, _ = self.gat_layers(input_tuple)
-        
+
         # Perform global attention pooling for final learning process
         # [B, N, F_out] -> [B, 1]
         pchembl_scores = self.global_attn_pooling(updated_node_features)
@@ -46,7 +46,7 @@ class GlobalAttentionPooling(nn.Module):
 
         self.global_attn = nn.Linear(in_features, 1)
         self.dropout = nn.Dropout(0.2)
-        
+
         self.final_projection = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
             nn.ReLU(),
@@ -57,12 +57,12 @@ class GlobalAttentionPooling(nn.Module):
         """
         The input node features (x) has shape: [B, N, F_out]
         """
-        attn_logits = self.attn(x)  # [B, N, 1]
+        attn_logits = self.global_attn(x)  # [B, N, 1]
         attn_scores = F.softmax(attn_logits, dim=1)  # Normalize across nodes
-        
+
         # Apply dropout to attention scores
-        attn_scores = self.dropout(attn_scores)  
-        
+        attn_scores = self.dropout(attn_scores)
+
         # [B, 1, N] @ [B, N, F_out] -> [B, 1, F_out]
         pooled_features = attn_scores.transpose(1, 2) @ x
 
@@ -168,6 +168,10 @@ class GraphAttentionLayer(nn.Module):
         # The shape is still [B, N, N, num_heads]
         attn_logits = self.attn_leaky_relu(attn_logits)
         attn_coeffs = F.softmax(attn_logits, dim=2)
+        # Any nodes that don't have any connections (i.e. nodes created to pad the input data to the
+        # required size) will have all their attention logits equal to -inf. In this case, softmax will
+        # output NaN, so replace all NaN values with 0.
+        attn_coeffs = attn_coeffs.nan_to_num(0)
 
         # Andrej Karpathy does this, so I guess it works (not sure why)
         # The shape is still [B, N, N, num_heads]
