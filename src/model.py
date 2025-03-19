@@ -18,7 +18,7 @@ class GraphAttentionNetwork(nn.Module):
             layers.append(GraphAttentionLayer(hidden_size, out_features, num_edge_features, use_leaky_relu=False))
 
         self.gat_layers = nn.Sequential(*layers)
-        self.global_attn_pooling = GlobalAttentionPooling(out_features, 1)
+        self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, 256)
 
     def forward(self, node_features, edge_features, adjacency_matrix) -> torch.Tensor:
         # Initial node feature shape: [B, N, F_in]
@@ -41,12 +41,17 @@ class GraphAttentionNetwork(nn.Module):
 
 
 class GlobalAttentionPooling(nn.Module):
-    def __init__(self, in_features: int, out_features: int = 1) -> None:
+    def __init__(self, in_features: int, out_features: int = 1, hidden_dim: int = 256) -> None:
         super().__init__()
 
         self.global_attn = nn.Linear(in_features, 1)
-        self.final_projection = nn.Linear(in_features, out_features)
         self.dropout = nn.Dropout(0.2)
+        
+        self.final_projection = nn.Sequential(
+            nn.Linear(in_features, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, out_features)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
