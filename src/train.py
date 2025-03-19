@@ -1,5 +1,6 @@
 import argparse
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -12,19 +13,41 @@ from utils.dataset import DrugProteinDataset
 
 def train_model(args: argparse.Namespace) -> None:
     # TODO - remove hard-coded specifications for the model
-    # TODO - split dataset into train, validation, and test
     model = GraphAttentionNetwork(333, 1, 16,
                                   args.hidden_size, args.num_layers, args.num_attn_heads)
-    dataset = load_data(args.data_path)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed)
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
 
-def load_data(data_path: str) -> Dataset:
+def load_data(data_path: str, seed: int) -> tuple[Dataset, Dataset, Dataset]:
     data_df = pd.read_csv(f'{data_path}/filtered_cancer_all.csv')
     protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
-    dataset = DrugProteinDataset(data_df, protein_embeddings_df)
-    return dataset
+
+    # Create a column that combines the protein ID and whether there was a significant drug-protein
+    # interaction. This column will be used to split the data to ensure that each dataset has an
+    # appropriate balance of proteins and interaction types.
+    data_df['stratify_col'] = data_df['Target_ID'] + '_' + data_df['label'].astype(str)
+
+    # Split 70% of the data into the training dataset (maintaing an equal split of proteins and interactions types).
+    train_df, remaining_df = train_test_split(data_df, test_size=0.3,
+                                              stratify=data_df['stratify_col'], random_state=seed)
+    # Split the remaining 30% of the data in half to get the validation and test datasets (maintaining an equal
+    # split of proteins and interaction types). Thus, the validation and test datasets will each contain 15% of
+    # the data.
+    validation_df, test_df = train_test_split(remaining_df, test_size=0.5,
+                                              stratify=remaining_df['stratify_col'], random_state=seed)
+
+    # Remove the stratify column from all the datasets.
+    train_df = train_df.drop(columns='stratify_col')
+    validation_df = validation_df.drop(columns='stratify_col')
+    test_df = test_df.drop(columns='stratify_col')
+
+    train_dataset = DrugProteinDataset(train_df, protein_embeddings_df)
+    validation_dataset = DrugProteinDataset(validation_df, protein_embeddings_df)
+    test_dataset = DrugProteinDataset(test_df, protein_embeddings_df)
+
+    return train_dataset, validation_dataset, test_dataset
 
 
 def get_parser() -> argparse.ArgumentParser:
@@ -38,6 +61,8 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Maximum number of epochs to run training")
     parser.add_argument("--data_path", type=str, required=False, default='../data',
                         help="Path to the folder with the data")
+    parser.add_argument("--seed", type=int, required=False, default=0,
+                        help="The seed used to control any stochastic operations")
     # Loss parameters
     parser.add_argument("--huber_delta", type=float, required=False, default=0.2,
                         help="Delta parameter for Huber loss function")

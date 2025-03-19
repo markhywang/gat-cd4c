@@ -157,7 +157,8 @@ class DrugProteinDataset(Dataset):
         edge_features = drug_graph.edge_tensor
         adjacency_matrix = drug_graph.adjacency_tensor
 
+        reshaped_protein_embedding = protein_embedding.unsqueeze(0).repeat(node_features.shape[0], 1)
         node_features = torch.cat(
-            (node_features, protein_embedding.unsqueeze(0).repeat(node_features.shape[0], 1)), dim=-1)
+            (node_features, reshaped_protein_embedding), dim=-1)
 
         return node_features, edge_features, adjacency_matrix, pchembl_score
