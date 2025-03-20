@@ -153,7 +153,7 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Learning rate")
     parser.add_argument("--scheduler_patience", type=int, required=False, default=10,
                         help="Number of epochs before reducing the learning rate")
-    parser.add_argument("--scheduler_factor", type=int, required=False, default=0.5,
+    parser.add_argument("--scheduler_factor", type=float, required=False, default=0.5,
                         help="The factor in which the learning rate scheduler adjusts learning rate")
 
     # Model parameters
