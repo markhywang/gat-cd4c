@@ -27,8 +27,8 @@ def train_model(args: argparse.Namespace) -> None:
         args.num_layers,
         args.num_attn_heads
     ).to(device)
-    train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.percent_train,
-                                                                args.percent_validation, args.percent_test,
+    train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.frac_train,
+                                                                args.frac_validation, args.frac_test,
                                                                 args.use_small_dataset)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     validation_loader = DataLoader(validation_dataset, batch_size=len(validation_dataset), shuffle=False)
@@ -93,11 +93,11 @@ def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss
     return float(loss)
 
 
-def load_data(data_path: str, seed: int, percent_train: float, percent_validation: float,
-              percent_test: float, use_small_dataset: bool) -> tuple[Dataset, Dataset, Dataset]:
-    assert math.isclose(percent_train + percent_validation + percent_test, 1), \
-        (f"Sum of percentage splits for training ({percent_train}), validation ({percent_validation}), "
-         f"and testing ({percent_test}) don't add up to 1")
+def load_data(data_path: str, seed: int, frac_train: float, frac_validation: float,
+              frac_test: float, use_small_dataset: bool) -> tuple[Dataset, Dataset, Dataset]:
+    assert math.isclose(frac_train + frac_validation + frac_test, 1), \
+        (f"Sum of training ({frac_train}), validation ({frac_validation}), "
+         f"and testing ({frac_test}) splits don't add up to 1")
 
     dataset_file = 'filtered_cancer_small.csv' if use_small_dataset else 'filtered_cancer_all.csv'
     data_df = pd.read_csv(f'{data_path}/{dataset_file}')
@@ -110,14 +110,14 @@ def load_data(data_path: str, seed: int, percent_train: float, percent_validatio
 
     # Split part of the data into the training dataset (maintaining an equal split of proteins and interactions types).
     train_df, remaining_df = train_test_split(data_df,
-                                              test_size=percent_validation + percent_test,
+                                              test_size=frac_validation + frac_test,
                                               stratify=data_df['stratify_col'],
                                               random_state=seed)
 
     # Split the remaining data to get the validation and test datasets (maintaining an equal split of proteins and
     # interaction types).
     validation_df, test_df = train_test_split(remaining_df,
-                                              test_size=percent_test / (percent_validation + percent_test),
+                                              test_size=frac_test / (frac_validation + frac_test),
                                               stratify=remaining_df['stratify_col'],
                                               random_state=seed)
 
@@ -150,12 +150,12 @@ def get_parser() -> argparse.ArgumentParser:
     # Data parameters
     parser.add_argument("--data_path", type=str, required=False, default='../data',
                         help="Path to the folder with the data")
-    parser.add_argument("--percent_train", type=float, required=False, default=0.7,
-                        help="Percentage of data to use for training dataset")
-    parser.add_argument("--percent_validation", type=float, required=False, default=0.15,
-                        help="Percentage of data to use for validation dataset")
-    parser.add_argument("--percent_test", type=float, required=False, default=0.15,
-                        help="Percentage of data to use for test dataset")
+    parser.add_argument("--frac_train", type=float, required=False, default=0.7,
+                        help="Fraction of data to use for training dataset")
+    parser.add_argument("--frac_validation", type=float, required=False, default=0.15,
+                        help="Fraction of data to use for validation dataset")
+    parser.add_argument("--frac_test", type=float, required=False, default=0.15,
+                        help="Fraction of data to use for test dataset")
     # Loss parameters
     parser.add_argument("--huber_beta", type=float, required=False, default=1.0,
                         help="Beta parameter for Huber loss function")
