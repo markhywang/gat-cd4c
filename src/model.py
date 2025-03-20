@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-
+# Set device
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 
@@ -37,7 +37,7 @@ class GraphAttentionNetwork(nn.Module):
         # Normalize and scale pChEMBL scores to (0, 14)
         # The shape is still [B, 1]
         pchembl_scores = F.softplus(pchembl_scores)
-        pchembl_scores = pchembl_scores * (14 / F.softplus(torch.tensor(1.0)))
+        pchembl_scores = pchembl_scores * (14 / F.softplus(torch.tensor(1.0).to(device)))
 
         # Final shape: [B, 1]
         return pchembl_scores
@@ -107,7 +107,7 @@ class GraphAttentionLayer(nn.Module):
     def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) \
             -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # Initial node_features shape: [B, N, F_in]
-        node_features, edge_features, adjacency_matrix = x
+        node_features, edge_features, adjacency_matrix = [t.to(device) for t in x]
         batch_size, num_nodes, num_node_features = node_features.shape
 
         # [B, N, F_in] -> [B, N, F_out]

@@ -10,26 +10,48 @@ import torch.nn as nn
 
 from model import GraphAttentionNetwork
 from utils.dataset import DrugProteinDataset
+from utils.helper_functions import *
+
+# Set device
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 
 def train_model(args: argparse.Namespace) -> None:
     # TODO - remove hard-coded specifications for the model
-    model = GraphAttentionNetwork(333, 1, 16,
-                                  args.hidden_size, args.num_layers, args.num_attn_heads)
+    model = GraphAttentionNetwork(
+        333,
+        1,
+        16,
+        args.hidden_size,
+        args.num_layers,
+        args.num_attn_heads
+    ).to(device)
     train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.use_small_dataset)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     validation_loader = DataLoader(validation_dataset, batch_size=len(validation_dataset), shuffle=False)
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    # Initialize the Huber loss function.
-    loss_func = nn.SmoothL1Loss(beta=args.huber_beta)
+    loss_func = nn.SmoothL1Loss(beta=args.huber_beta)  # Initialize the Huber loss function.
+    optimizer = optim.Adam(
+        model.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay
+    )
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        factor=args.scheduler_factor,
+        patience=args.scheduler_patience
+    )
 
     for epoch in range(args.max_epochs):
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.max_epochs}", leave=True)
         avg_train_loss = run_training_epoch(progress_bar, optimizer, model, loss_func)
         avg_validation_loss = get_validation_metrics(validation_loader, model, loss_func)
-        print(f"Epoch {epoch + 1}/{args.max_epochs} completed: train loss = {round(avg_train_loss, 5)}, "
-              f"validation loss = {round(avg_validation_loss, 5)}")
+
+        # Step the learning rate scheduler based on mean training loss
+        lr_scheduler.step(avg_train_loss)
+
+        print(f"Epoch {epoch + 1}/{args.max_epochs}: Train Loss = {avg_train_loss:.5f}, "
+              f"Validation Loss = {avg_validation_loss:.5f}")
 
 
 def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn.Module,
@@ -39,7 +61,10 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
 
     training_loss = []
     for batch_data in progress_bar:
-        node_features, edge_features, adjacency_matrix, pchembl_score = batch_data
+        node_features, edge_features, adjacency_matrix, pchembl_score = [
+            x.to(device) for x in batch_data
+        ]
+
         pred = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
         loss = loss_func(pred, pchembl_score)
         training_loss.append(float(loss))
@@ -55,7 +80,9 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
 def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss_func: nn.Module) -> float:
     model.eval()
 
-    node_features, edge_features, adjacency_matrix, pchembl_scores = next(iter(validation_loader))
+    node_features, edge_features, adjacency_matrix, pchembl_scores = [
+        x.to(device) for x in next(iter(validation_loader))
+    ]
     preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
     loss = loss_func(preds, pchembl_scores)
 
@@ -73,13 +100,18 @@ def load_data(data_path: str, seed: int, use_small_dataset: bool) -> tuple[Datas
     data_df['stratify_col'] = data_df['Target_ID'] + '_' + data_df['label'].astype(str)
 
     # Split 70% of the data into the training dataset (maintaing an equal split of proteins and interactions types).
-    train_df, remaining_df = train_test_split(data_df, test_size=0.3,
-                                              stratify=data_df['stratify_col'], random_state=seed)
+    train_df, remaining_df = train_test_split(data_df,
+                                              test_size=0.3,
+                                              stratify=data_df['stratify_col'],
+                                              random_state=seed)
+
     # Split the remaining 30% of the data in half to get the validation and test datasets (maintaining an equal
     # split of proteins and interaction types). Thus, the validation and test datasets will each contain 15% of
     # the data.
-    validation_df, test_df = train_test_split(remaining_df, test_size=0.5,
-                                              stratify=remaining_df['stratify_col'], random_state=seed)
+    validation_df, test_df = train_test_split(remaining_df,
+                                              test_size=0.5,
+                                              stratify=remaining_df['stratify_col'],
+                                              random_state=seed)
 
     # Remove the stratify column from all the datasets.
     train_df = train_df.drop(columns='stratify_col')
@@ -95,6 +127,7 @@ def load_data(data_path: str, seed: int, use_small_dataset: bool) -> tuple[Datas
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--use_small_dataset", action="store_true",
                         help="Whether to use the small dataset instead of the entire dataset")
     parser.add_argument("--batch_size", type=int, required=False, default=64,
@@ -108,16 +141,21 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Path to the folder with the data")
     parser.add_argument("--seed", type=int, required=False, default=0,
                         help="The seed used to control any stochastic operations")
+
     # Loss parameters
     parser.add_argument("--huber_beta", type=float, required=False, default=1.0,
                         help="Beta parameter for Huber loss function")
-    # Optimizer paramters
-    parser.add_argument("--weight_decay", type=float, required=False, default=1e-3,
+
+    # Optimizer parameters
+    parser.add_argument("--weight_decay", type=float, required=False, default=1e-4,
                         help="Weight decay for optimizer")
     parser.add_argument("--lr", type=float, required=False, default=3e-4,
                         help="Learning rate")
-    parser.add_argument("--scheduler_rate", type=int, required=False, default=5,
+    parser.add_argument("--scheduler_patience", type=int, required=False, default=5,
                         help="Number of epochs before reducing the learning rate")
+    parser.add_argument("--scheduler_factor", type=int, required=False, default=1e-4,
+                        help="The factor in which the learning rate scheduler adjusts learning rate")
+
     # Model parameters
     parser.add_argument("--hidden_size", type=int, required=False, default=32,
                         help="The size of embeddings for hidden layers")
@@ -129,6 +167,7 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Dropout percentage for graph attention layers")
     parser.add_argument("--leaky_relu_slope", type=float, required=False, default=0.2,
                         help="The slope for the Leaky ReLU activation function")
+
     # Output paramters
     parser.add_argument("--plot_steps", type=int, required=False, default=1,
                         help="Number of batches represented by each data point on the plots")

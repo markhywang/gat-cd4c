@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from typing import List
 
+
 def walk_through_dir(dir_path):
     """
     Walks through dir_path returning its contents.
