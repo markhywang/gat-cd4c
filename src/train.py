@@ -31,7 +31,7 @@ def train_model(args: argparse.Namespace) -> None:
     validation_loader = DataLoader(validation_dataset, batch_size=len(validation_dataset), shuffle=False)
 
     loss_func = nn.SmoothL1Loss(beta=args.huber_beta)  # Initialize the Huber loss function.
-    optimizer = optim.Adam(
+    optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
         weight_decay=args.weight_decay
@@ -151,9 +151,9 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Weight decay for optimizer")
     parser.add_argument("--lr", type=float, required=False, default=3e-4,
                         help="Learning rate")
-    parser.add_argument("--scheduler_patience", type=int, required=False, default=5,
+    parser.add_argument("--scheduler_patience", type=int, required=False, default=10,
                         help="Number of epochs before reducing the learning rate")
-    parser.add_argument("--scheduler_factor", type=int, required=False, default=1e-4,
+    parser.add_argument("--scheduler_factor", type=int, required=False, default=0.5,
                         help="The factor in which the learning rate scheduler adjusts learning rate")
 
     # Model parameters
