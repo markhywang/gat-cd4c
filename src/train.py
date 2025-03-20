@@ -62,7 +62,7 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
     training_loss = []
     for batch_data in progress_bar:
         node_features, edge_features, adjacency_matrix, pchembl_score = [
-            x.to(device) for x in batch_data
+            x.to(torch.float32).to(device) for x in batch_data
         ]
 
         pred = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
@@ -81,7 +81,7 @@ def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss
     model.eval()
 
     node_features, edge_features, adjacency_matrix, pchembl_scores = [
-        x.to(device) for x in next(iter(validation_loader))
+        x.to(torch.float32).to(device) for x in next(iter(validation_loader))
     ]
     preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
     loss = loss_func(preds, pchembl_scores)
