@@ -2,6 +2,7 @@ import argparse
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+import math
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -26,7 +27,9 @@ def train_model(args: argparse.Namespace) -> None:
         args.num_layers,
         args.num_attn_heads
     ).to(device)
-    train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.use_small_dataset)
+    train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.percent_train,
+                                                                args.percent_validation, args.percent_test,
+                                                                args.use_small_dataset)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     validation_loader = DataLoader(validation_dataset, batch_size=len(validation_dataset), shuffle=False)
 
@@ -78,6 +81,7 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
 
 
 def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss_func: nn.Module) -> float:
+    # Ensure model is in evaluation mode.
     model.eval()
 
     node_features, edge_features, adjacency_matrix, pchembl_scores = [
@@ -89,7 +93,12 @@ def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss
     return float(loss)
 
 
-def load_data(data_path: str, seed: int, use_small_dataset: bool) -> tuple[Dataset, Dataset, Dataset]:
+def load_data(data_path: str, seed: int, percent_train: float, percent_validation: float,
+              percent_test: float, use_small_dataset: bool) -> tuple[Dataset, Dataset, Dataset]:
+    assert math.isclose(percent_train + percent_validation + percent_test, 1), \
+        (f"Sum of percentage splits for training ({percent_train}), validation ({percent_validation}), "
+         f"and testing ({percent_test}) don't add up to 1")
+
     dataset_file = 'filtered_cancer_small.csv' if use_small_dataset else 'filtered_cancer_all.csv'
     data_df = pd.read_csv(f'{data_path}/{dataset_file}')
     protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
@@ -99,17 +108,16 @@ def load_data(data_path: str, seed: int, use_small_dataset: bool) -> tuple[Datas
     # appropriate balance of proteins and interaction types.
     data_df['stratify_col'] = data_df['Target_ID'] + '_' + data_df['label'].astype(str)
 
-    # Split 70% of the data into the training dataset (maintaing an equal split of proteins and interactions types).
+    # Split part of the data into the training dataset (maintaining an equal split of proteins and interactions types).
     train_df, remaining_df = train_test_split(data_df,
-                                              test_size=0.3,
+                                              test_size=percent_validation + percent_test,
                                               stratify=data_df['stratify_col'],
                                               random_state=seed)
 
-    # Split the remaining 30% of the data in half to get the validation and test datasets (maintaining an equal
-    # split of proteins and interaction types). Thus, the validation and test datasets will each contain 15% of
-    # the data.
+    # Split the remaining data to get the validation and test datasets (maintaining an equal split of proteins and
+    # interaction types).
     validation_df, test_df = train_test_split(remaining_df,
-                                              test_size=0.5,
+                                              test_size=percent_test / (percent_validation + percent_test),
                                               stratify=remaining_df['stratify_col'],
                                               random_state=seed)
 
@@ -137,11 +145,17 @@ def get_parser() -> argparse.ArgumentParser:
                              "loss before stopping training")
     parser.add_argument("--max_epochs", type=int, required=False, default=128,
                         help="Maximum number of epochs to run training")
-    parser.add_argument("--data_path", type=str, required=False, default='../data',
-                        help="Path to the folder with the data")
     parser.add_argument("--seed", type=int, required=False, default=0,
                         help="The seed used to control any stochastic operations")
-
+    # Data parameters
+    parser.add_argument("--data_path", type=str, required=False, default='../data',
+                        help="Path to the folder with the data")
+    parser.add_argument("--percent_train", type=float, required=False, default=0.7,
+                        help="Percentage of data to use for training dataset")
+    parser.add_argument("--percent_validation", type=float, required=False, default=0.15,
+                        help="Percentage of data to use for validation dataset")
+    parser.add_argument("--percent_test", type=float, required=False, default=0.15,
+                        help="Percentage of data to use for test dataset")
     # Loss parameters
     parser.add_argument("--huber_beta", type=float, required=False, default=1.0,
                         help="Beta parameter for Huber loss function")
