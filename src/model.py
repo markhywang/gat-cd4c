@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 class GraphAttentionNetwork(nn.Module):
     def __init__(self, in_features: int, out_features: int, num_edge_features: int, hidden_size: int,
