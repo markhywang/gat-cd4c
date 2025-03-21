@@ -72,6 +72,8 @@ def train_model(args: argparse.Namespace) -> None:
             # Update the best validation loss seen so far.
             best_validation_loss = avg_validation_loss
             no_validation_loss_improvement = 0
+            # Save the weights of the model which gives the lowest validation loss so far.
+            torch.save(model.state_dict(), '../models/model.pth')
         else:
             no_validation_loss_improvement += 1
             # If the validation hasn't improved for a certain number of epochs, end training.
