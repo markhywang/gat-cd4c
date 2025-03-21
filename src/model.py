@@ -99,11 +99,20 @@ class GraphAttentionLayer(nn.Module):
         nn.init.xavier_uniform_(self.projection.weight.data, gain=math.sqrt(2))
         nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
 
+        # Add residual projection if in_features doesn't match out_features.
+        if in_features != out_features:
+            self.residual_proj = nn.Linear(in_features, out_features)
+        else:
+            self.residual_proj = nn.Identity()
+
     def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) \
             -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # Initial node_features shape: [B, N, F_in]
         node_features, edge_features, adjacency_matrix = [t.to(device) for t in x]
         batch_size, num_nodes, num_node_features = node_features.shape
+
+        # Save residual for later addition.
+        residual = node_features
 
         # [B, N, F_in] -> [B, N, F_out]
         new_node_features = self.projection(self.layer_norm_1(node_features))
@@ -115,16 +124,20 @@ class GraphAttentionLayer(nn.Module):
         # attn_coeffs shape: [B, N, N, num_heads]
         attn_coeffs = self._compute_attn_coeffs(new_node_features, edge_features, adjacency_matrix, num_nodes)
 
-        # [B, N, num_heads, F_out // num_geads] -> [B, N, F_out]
+        # [B, N, num_heads, F_out // num_attn_heads] -> [B, N, F_out]
         new_node_features = self._execute_message_passing(new_node_features, attn_coeffs, batch_size, num_nodes)
 
         # Do final projection and dropout
-        # The shape is still [B, N, F_out]
+        # The shape remains [B, N, F_out]
         new_node_features = self.out_projection(new_node_features)
         new_node_features = self.dropout(new_node_features)
 
-        # Finally, perform another LeakyReLU if required
-        # The shape is still [B, N, F_out]
+        # Apply residual connection.
+        # If dimensions differ, project the residual to the correct dimension.
+        residual = self.residual_proj(residual)
+        new_node_features = new_node_features + residual
+
+        # Optionally apply layer normalization and activation.
         if self.use_leaky_relu:
             new_node_features = self.leaky_relu(self.layer_norm_2(new_node_features))
 
