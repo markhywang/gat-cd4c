@@ -45,6 +45,10 @@ def train_model(args: argparse.Namespace) -> None:
         patience=args.scheduler_patience
     )
 
+    best_validation_loss = float('inf')
+    # Initialize a counter that tracks the number of consecutive epochs without an improvement in validation loss.
+    no_validation_loss_improvement = 0
+
     for epoch in range(args.max_epochs):
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.max_epochs}", leave=True)
         avg_train_loss = run_training_epoch(progress_bar, optimizer, model, loss_func)
@@ -56,6 +60,16 @@ def train_model(args: argparse.Namespace) -> None:
         print(f"Epoch {epoch + 1}/{args.max_epochs}: Train Loss = {avg_train_loss:.5f}, "
               f"Validation Loss = {avg_validation_loss:.5f}")
 
+        if avg_validation_loss < best_validation_loss:
+            # Update the best validation loss seen so far.
+            best_validation_loss = avg_validation_loss
+            no_validation_loss_improvement = 0
+        else:
+            no_validation_loss_improvement += 1
+            # If the validation hasn't improved for a certain number of epochs, end training.
+            if no_validation_loss_improvement == args.stoppage_epochs:
+                break
+
 
 def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn.Module,
                        loss_func: nn.Module) -> float:
@@ -63,6 +77,7 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
     model.train()
 
     training_loss = []
+
     for batch_data in progress_bar:
         node_features, edge_features, adjacency_matrix, pchembl_score = [
             x.to(torch.float32).to(device) for x in batch_data
@@ -182,9 +197,6 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--leaky_relu_slope", type=float, required=False, default=0.2,
                         help="The slope for the Leaky ReLU activation function")
 
-    # Output paramters
-    parser.add_argument("--plot_steps", type=int, required=False, default=1,
-                        help="Number of batches represented by each data point on the plots")
     return parser
 
 
