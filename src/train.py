@@ -198,14 +198,14 @@ def get_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--use_small_dataset", action="store_true",
                         help="Whether to use the small dataset instead of the entire dataset")
-    parser.add_argument("--batch_size", type=int, required=False, default=128,
+    parser.add_argument("--batch_size", type=int, required=False, default=64,
                         help="Batch size for data loader")
-    parser.add_argument("--stoppage_epochs", type=int, required=False, default=10000,
+    parser.add_argument("--stoppage_epochs", type=int, required=False, default=10,
                         help="Number of consecutive epochs with no improvement to validation "
                              "loss before stopping training")
     parser.add_argument("--max_epochs", type=int, required=False, default=128,
                         help="Maximum number of epochs to run training")
-    parser.add_argument("--seed", type=int, required=False, default=0,
+    parser.add_argument("--seed", type=int, required=False, default=42,
                         help="The seed used to control any stochastic operations")
     # Data parameters
     parser.add_argument("--data_path", type=str, required=False, default='../data',
@@ -221,9 +221,9 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Beta parameter for Huber loss function")
 
     # Optimizer parameters
-    parser.add_argument("--weight_decay", type=float, required=False, default=1e-8,
+    parser.add_argument("--weight_decay", type=float, required=False, default=1e-4,
                         help="Weight decay for optimizer")
-    parser.add_argument("--lr", type=float, required=False, default=1e-3,
+    parser.add_argument("--lr", type=float, required=False, default=3e-3,
                         help="Learning rate")
     parser.add_argument("--scheduler_patience", type=int, required=False, default=10,
                         help="Number of epochs before reducing the learning rate")
@@ -231,11 +231,11 @@ def get_parser() -> argparse.ArgumentParser:
                         help="The factor in which the learning rate scheduler adjusts learning rate")
 
     # Model parameters
-    parser.add_argument("--hidden_size", type=int, required=False, default=128,
+    parser.add_argument("--hidden_size", type=int, required=False, default=64,
                         help="The size of embeddings for hidden layers")
-    parser.add_argument("--num_layers", type=int, required=False, default=12,
+    parser.add_argument("--num_layers", type=int, required=False, default=3,
                         help="The number of graph attention layers to use")
-    parser.add_argument("--num_attn_heads", type=int, required=False, default=16,
+    parser.add_argument("--num_attn_heads", type=int, required=False, default=4,
                         help="The number of attention heads to use for every attention block")
     parser.add_argument("--dropout", type=float, required=False, default=0.2,
                         help="Dropout percentage for graph attention layers")
