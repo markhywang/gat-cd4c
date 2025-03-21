@@ -194,7 +194,7 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Whether to use the small dataset instead of the entire dataset")
     parser.add_argument("--batch_size", type=int, required=False, default=64,
                         help="Batch size for data loader")
-    parser.add_argument("--stoppage_epochs", type=int, required=False, default=5,
+    parser.add_argument("--stoppage_epochs", type=int, required=False, default=10000,
                         help="Number of consecutive epochs with no improvement to validation "
                              "loss before stopping training")
     parser.add_argument("--max_epochs", type=int, required=False, default=128,
