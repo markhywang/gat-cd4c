@@ -34,7 +34,7 @@ def train_model(args: argparse.Namespace) -> None:
                                                                 args.frac_validation, args.frac_test,
                                                                 args.use_small_dataset)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    validation_loader = DataLoader(validation_dataset, batch_size=len(validation_dataset), shuffle=False)
+    validation_loader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=False)
 
     loss_func = nn.SmoothL1Loss(beta=args.huber_beta)  # Initialize the Huber loss function.
     optimizer = optim.AdamW(
@@ -123,19 +123,28 @@ def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss
     # Ensure model is in evaluation mode.
     model.eval()
 
-    node_features, edge_features, adjacency_matrix, pchembl_scores = [
-        x.to(torch.float32).to(device) for x in next(iter(validation_loader))
-    ]
-    preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
-    loss = loss_func(preds, pchembl_scores).item()
-    # Threshold of 7.0 is chosen based on the CD4C paper's claim that a pChEMBL score >= 7.0 signifies a
-    # significant drug-protein interaction.
-    acc = accuracy_func(preds, pchembl_scores, threshold=7.0) / preds.shape[0]
+    cum_validation_samples = 0
+    cum_validation_loss = 0
+    cum_validation_acc_preds = 0
+
+    for batch in validation_loader:
+        node_features, edge_features, adjacency_matrix, pchembl_scores = [
+            x.to(torch.float32).to(device) for x in batch
+        ]
+        preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
+        loss = loss_func(preds, pchembl_scores).item()
+        # Threshold of 7.0 is chosen based on the CD4C paper's claim that a pChEMBL score >= 7.0 signifies a
+        # significant drug-protein interaction.
+        acc = accuracy_func(preds, pchembl_scores, threshold=7.0)
+
+        cum_validation_samples += preds.shape[0]
+        cum_validation_loss += loss * preds.shape[0]
+        cum_validation_acc_preds += acc
 
     # TODO - only plot preds vs labels for the final training epoch
     # plot_preds_vs_labels(preds, pchembl_scores)
 
-    return loss, acc
+    return cum_validation_loss / cum_validation_samples, cum_validation_acc_preds / cum_validation_samples
 
 
 def load_data(data_path: str, seed: int, frac_train: float, frac_validation: float,
