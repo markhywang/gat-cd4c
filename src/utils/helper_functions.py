@@ -85,20 +85,23 @@ def plot_predictions(
     plt.legend(prop={"size": 14})
 
 
-# Calculate accuracy (a classification metric)
-def accuracy_fn(y_true, y_pred):
-    """Calculates accuracy between truth labels and predictions.
+# Calculate number of accurate predictions (given regression outputs)
+def accuracy_func(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float) -> int:
+    """Calculates regression accuracy given labels and predictions.
 
     Args:
-        y_true (torch.Tensor): Truth labels for predictions.
         y_pred (torch.Tensor): Predictions to be compared to predictions.
+        y_true (torch.Tensor): Truth labels for predictions.
+        threshold (float): Threshold for predicting a classification of 1
 
     Returns:
-        [torch.float]: Accuracy value between y_true and y_pred, e.g. 78.45
+        [int]: Number of accurate predictions, e.g. 783
     """
-    correct = torch.eq(y_true, y_pred).sum().item()
-    acc = (correct / len(y_pred)) * 100
-    return acc
+    above_threshold = (y_pred >= threshold) & (y_true >= threshold)
+    below_threshold = (y_pred < threshold) & (y_true < threshold)
+    num_above_threshold = int(above_threshold.sum().item())
+    num_below_threshold = int(below_threshold.sum().item())
+    return num_above_threshold + num_below_threshold
 
 
 def print_train_time(start, end, device=None):

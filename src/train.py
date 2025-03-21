@@ -52,8 +52,8 @@ def train_model(args: argparse.Namespace) -> None:
 
     for epoch in range(args.max_epochs):
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.max_epochs}", leave=True)
-        avg_train_loss = run_training_epoch(progress_bar, optimizer, model, loss_func)
-        avg_validation_loss = get_validation_metrics(validation_loader, model, loss_func)
+        avg_train_loss, avg_train_acc = run_training_epoch(progress_bar, optimizer, model, loss_func)
+        avg_validation_loss, avg_validation_acc = get_validation_metrics(validation_loader, model, loss_func)
 
         # Step the learning rate scheduler based on mean training loss
         lr_scheduler.step(avg_train_loss)
@@ -61,9 +61,12 @@ def train_model(args: argparse.Namespace) -> None:
         # Save the training and validation metrics in a dataframe.
         metrics_df.at[epoch, 'train_loss'] = avg_train_loss
         metrics_df.at[epoch, 'validation_loss'] = avg_validation_loss
+        metrics_df.at[epoch, 'train_acc'] = avg_train_acc
+        metrics_df.at[epoch, 'validation_acc'] = avg_validation_acc
 
         print(f"Epoch {epoch + 1}/{args.max_epochs}: Train Loss = {avg_train_loss:.5f}, "
-              f"Validation Loss = {avg_validation_loss:.5f}")
+              f"Validation Loss = {avg_validation_loss:.5f}, Train Accuracy = {avg_train_acc:.5f}, "
+              f"Validation Accuracy = {avg_validation_acc:.5f}")
 
         if avg_validation_loss < best_validation_loss:
             # Update the best validation loss seen so far.
@@ -75,37 +78,43 @@ def train_model(args: argparse.Namespace) -> None:
             if no_validation_loss_improvement == args.stoppage_epochs:
                 break
 
-    # Temporary code
-    metrics_df['train_acc'] = metrics_df['train_loss']
-    metrics_df['validation_acc'] = metrics_df['validation_loss']
     plot_loss_curves(metrics_df)
 
 
 def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn.Module,
-                       loss_func: nn.Module) -> float:
+                       loss_func: nn.Module) -> tuple[float, float]:
     # Ensure model is in training mode.
     model.train()
 
-    training_loss = []
+    cum_training_samples = 0
+    cum_training_loss = 0
+    cum_training_acc_preds = 0
 
     for batch_data in progress_bar:
         node_features, edge_features, adjacency_matrix, pchembl_score = [
             x.to(torch.float32).to(device) for x in batch_data
         ]
 
-        pred = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
-        loss = loss_func(pred, pchembl_score)
-        training_loss.append(float(loss))
+        preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
+        loss = loss_func(preds, pchembl_score)
+
+        cum_training_samples += preds.shape[0]
+        cum_training_loss += loss.item() * preds.shape[0]
+        # Threshold of 7.0 is chosen based on the CD4C paper's claim that a pChEMBL score >= 7.0 signifies a
+        # significant drug-protein interaction.
+        cum_training_acc_preds += accuracy_func(preds, pchembl_score, threshold=7.0)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-    avg_loss = sum(training_loss) / len(training_loss)
-    return avg_loss
+    avg_loss = cum_training_loss / cum_training_samples
+    avg_acc = cum_training_acc_preds / cum_training_samples
+    return avg_loss, avg_acc
 
 
-def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss_func: nn.Module) -> float:
+def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss_func: nn.Module) \
+        -> tuple[float, float]:
     # Ensure model is in evaluation mode.
     model.eval()
 
@@ -113,9 +122,12 @@ def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss
         x.to(torch.float32).to(device) for x in next(iter(validation_loader))
     ]
     preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
-    loss = loss_func(preds, pchembl_scores)
+    loss = loss_func(preds, pchembl_scores).item()
+    # Threshold of 7.0 is chosen based on the CD4C paper's claim that a pChEMBL score >= 7.0 signifies a
+    # significant drug-protein interaction.
+    acc = accuracy_func(preds, pchembl_scores, threshold=7.0) / preds.shape[0]
 
-    return float(loss)
+    return loss, acc
 
 
 def load_data(data_path: str, seed: int, frac_train: float, frac_validation: float,
