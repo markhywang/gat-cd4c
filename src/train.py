@@ -19,6 +19,9 @@ device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 def train_model(args: argparse.Namespace) -> None:
     # TODO - remove hard-coded specifications for the model
+    # Set the same seed every time for deterministic behaviour.
+    set_seeds()
+
     model = GraphAttentionNetwork(
         333,
         1,
