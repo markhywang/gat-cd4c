@@ -221,9 +221,9 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Beta parameter for Huber loss function")
 
     # Optimizer parameters
-    parser.add_argument("--weight_decay", type=float, required=False, default=1e-6,
+    parser.add_argument("--weight_decay", type=float, required=False, default=1e-8,
                         help="Weight decay for optimizer")
-    parser.add_argument("--lr", type=float, required=False, default=3e-4,
+    parser.add_argument("--lr", type=float, required=False, default=1e-3,
                         help="Learning rate")
     parser.add_argument("--scheduler_patience", type=int, required=False, default=10,
                         help="Number of epochs before reducing the learning rate")
