@@ -8,7 +8,7 @@ device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 
 class GraphAttentionNetwork(nn.Module):
-    def __init__(self, in_features: int, out_features: int, num_edge_features: int, 
+    def __init__(self, in_features: int, out_features: int, num_edge_features: int,
                  hidden_size: int, num_layers: int, num_attn_heads: int) -> None:
         super().__init__()
 
@@ -33,11 +33,6 @@ class GraphAttentionNetwork(nn.Module):
         # Perform global attention pooling for final learning process
         # [B, N, F_out] -> [B, 1]
         pchembl_scores = self.global_attn_pooling(updated_node_features)
-
-        # Normalize and scale pChEMBL scores to (0, 14)
-        # The shape is still [B, 1]
-        pchembl_scores = F.softplus(pchembl_scores)
-        pchembl_scores = pchembl_scores * (14 / F.softplus(torch.tensor(1.0).to(device)))
 
         # Final shape: [B, 1]
         return pchembl_scores

@@ -132,6 +132,9 @@ def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss
     # significant drug-protein interaction.
     acc = accuracy_func(preds, pchembl_scores, threshold=7.0) / preds.shape[0]
 
+    # TODO - only plot preds vs labels for the final training epoch
+    # plot_preds_vs_labels(preds, pchembl_scores)
+
     return loss, acc
 
 
@@ -205,7 +208,7 @@ def get_parser() -> argparse.ArgumentParser:
     # Optimizer parameters
     parser.add_argument("--weight_decay", type=float, required=False, default=1e-4,
                         help="Weight decay for optimizer")
-    parser.add_argument("--lr", type=float, required=False, default=3e-4,
+    parser.add_argument("--lr", type=float, required=False, default=3e-3,
                         help="Learning rate")
     parser.add_argument("--scheduler_patience", type=int, required=False, default=10,
                         help="Number of epochs before reducing the learning rate")

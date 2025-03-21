@@ -239,3 +239,23 @@ def count_model_params(model: nn.Module, only_trainable: bool = False) -> int:
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
     else:
         return sum(p.numel() for p in model.parameters())
+
+
+def plot_preds_vs_labels(preds: torch.Tensor, labels: torch.Tensor) -> None:
+    preds = preds.cpu().detach().numpy()
+    labels = labels.cpu().detach().numpy()
+
+    plt.figure(figsize=(6, 6))
+    plt.scatter(labels, preds, alpha=0.5, label='Predictions')
+
+    # Plot the y = x line
+    min_val = min(labels.min(), preds.min())
+    max_val = max(labels.max(), preds.max())
+    plt.plot([min_val, max_val], [min_val, max_val], 'r--', label='y = x')
+
+    plt.xlabel('True Labels')
+    plt.ylabel('Predictions')
+    plt.title('Predictions vs. True Labels')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
