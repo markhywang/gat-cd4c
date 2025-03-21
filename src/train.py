@@ -48,6 +48,7 @@ def train_model(args: argparse.Namespace) -> None:
     best_validation_loss = float('inf')
     # Initialize a counter that tracks the number of consecutive epochs without an improvement in validation loss.
     no_validation_loss_improvement = 0
+    metrics_df = pd.DataFrame(columns=['train_loss', 'validation_loss'], index=range(args.max_epochs))
 
     for epoch in range(args.max_epochs):
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.max_epochs}", leave=True)
@@ -56,6 +57,10 @@ def train_model(args: argparse.Namespace) -> None:
 
         # Step the learning rate scheduler based on mean training loss
         lr_scheduler.step(avg_train_loss)
+
+        # Save the training and validation metrics in a dataframe.
+        metrics_df.at[epoch, 'train_loss'] = avg_train_loss
+        metrics_df.at[epoch, 'validation_loss'] = avg_validation_loss
 
         print(f"Epoch {epoch + 1}/{args.max_epochs}: Train Loss = {avg_train_loss:.5f}, "
               f"Validation Loss = {avg_validation_loss:.5f}")
@@ -69,6 +74,11 @@ def train_model(args: argparse.Namespace) -> None:
             # If the validation hasn't improved for a certain number of epochs, end training.
             if no_validation_loss_improvement == args.stoppage_epochs:
                 break
+
+    # Temporary code
+    metrics_df['train_acc'] = metrics_df['train_loss']
+    metrics_df['validation_acc'] = metrics_df['validation_loss']
+    plot_loss_curves(metrics_df)
 
 
 def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn.Module,

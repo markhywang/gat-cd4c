@@ -122,26 +122,22 @@ def plot_loss_curves(results):
     """Plots training curves of a results dictionary.
 
     Args:
-        results (dict): dictionary containing list of values, e.g.
-            {"train_loss": [...],
-             "train_acc": [...],
-             "test_loss": [...],
-             "test_acc": [...]}
+        results (pd.DataFrame): dataframe containing train_loss, train_acc, validation_loss, and validation_acc
     """
-    loss = results["train_loss"]
-    test_loss = results["test_loss"]
+    loss = results["train_loss"].tolist()
+    validation_loss = results["validation_loss"].tolist()
 
-    accuracy = results["train_acc"]
-    test_accuracy = results["test_acc"]
+    accuracy = results["train_acc"].tolist()
+    validation_accuracy = results["validation_acc"].tolist()
 
-    epochs = range(len(results["train_loss"]))
+    epochs = range(results.shape[0])
 
     plt.figure(figsize=(15, 7))
 
     # Plot loss
     plt.subplot(1, 2, 1)
     plt.plot(epochs, loss, label="train_loss")
-    plt.plot(epochs, test_loss, label="test_loss")
+    plt.plot(epochs, validation_loss, label="validation_loss")
     plt.title("Loss")
     plt.xlabel("Epochs")
     plt.legend()
@@ -149,10 +145,12 @@ def plot_loss_curves(results):
     # Plot accuracy
     plt.subplot(1, 2, 2)
     plt.plot(epochs, accuracy, label="train_accuracy")
-    plt.plot(epochs, test_accuracy, label="test_accuracy")
+    plt.plot(epochs, validation_accuracy, label="validation_accuracy")
     plt.title("Accuracy")
     plt.xlabel("Epochs")
     plt.legend()
+
+    plt.show()
 
 
 def pred_and_plot_image(
