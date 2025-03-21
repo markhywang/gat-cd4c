@@ -14,8 +14,14 @@ from utils.dataset import DrugProteinDataset
 from utils.helper_functions import *
 
 # Set device
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
 
+print(f"Using device: {device}")
 
 def train_model(args: argparse.Namespace) -> None:
     # TODO - remove hard-coded specifications for the model
