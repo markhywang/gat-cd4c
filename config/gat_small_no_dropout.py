@@ -11,7 +11,6 @@ args = {
     "huber_beta": 1.0,
     "weight_decay": 1e-4,
     "lr": 1e-3,
-    "momentum": 0.9,
     "scheduler_patience": 10,
     "scheduler_factor": 0.5,
     "hidden_size": 96,
