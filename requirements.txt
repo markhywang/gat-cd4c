@@ -12,3 +12,4 @@ argparse
 tensorboard
 jupyterlab
 notebook
+regex
