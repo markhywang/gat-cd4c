@@ -14,21 +14,21 @@ from utils.dataset import DrugProteinDataset
 from utils.helper_functions import *
 
 # Set device
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
-elif torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
+device = torch.device("cpu")
 
 print(f"Using device: {device}")
 
-def train_model(args: argparse.Namespace) -> None:
+def train_model(args: argparse.Namespace, m_device) -> None:
     # TODO - remove hard-coded specifications for the model
     # Set the same seed every time for deterministic behaviour.
     set_seeds()
 
+    # Set device to device
+    global device 
+    device = m_device
+
     model = GraphAttentionNetwork(
+        device,
         333,
         1,
         16,
@@ -38,6 +38,9 @@ def train_model(args: argparse.Namespace) -> None:
         args.dropout,
         args.pooling_dim
     ).to(torch.float32).to(device)
+
+    print(f'Model parameters: {count_model_params(model)}')
+    
     train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.frac_train,
                                                                 args.frac_validation, args.frac_test,
                                                                 args.use_small_dataset)
