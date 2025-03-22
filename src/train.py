@@ -18,7 +18,7 @@ device = torch.device("cpu")
 
 print(f"Using device: {device}")
 
-def train_model(args: argparse.Namespace, m_device) -> None:
+def train_model(args: argparse.Namespace, m_device = device) -> None:
     # TODO - remove hard-coded specifications for the model
     # Set the same seed every time for deterministic behaviour.
     set_seeds()
@@ -212,6 +212,7 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Maximum number of epochs to run training")
     parser.add_argument("--seed", type=int, required=False, default=42,
                         help="The seed used to control any stochastic operations")
+
     # Data parameters
     parser.add_argument("--data_path", type=str, required=False, default='../data',
                         help="Path to the folder with the data")
@@ -221,6 +222,7 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Fraction of data to use for validation dataset")
     parser.add_argument("--frac_test", type=float, required=False, default=0.15,
                         help="Fraction of data to use for test dataset")
+
     # Loss parameters
     parser.add_argument("--huber_beta", type=float, required=False, default=1.0,
                         help="Beta parameter for Huber loss function")
@@ -230,6 +232,8 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Weight decay for optimizer")
     parser.add_argument("--lr", type=float, required=False, default=3e-3,
                         help="Learning rate")
+    parser.add_argument("--momentum", type=float, required=False, default=0.9,
+                        help="Momentum for appropriate optimizers (e.g. SGD)")
     parser.add_argument("--scheduler_patience", type=int, required=False, default=10,
                         help="Number of epochs before reducing the learning rate")
     parser.add_argument("--scheduler_factor", type=float, required=False, default=0.5,

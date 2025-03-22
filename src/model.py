@@ -177,6 +177,7 @@ class GraphAttentionLayer(nn.Module):
         # The shape is still [B, N, N, num_heads]
         attn_logits = self.attn_leaky_relu(attn_logits)
         attn_coeffs = F.softmax(attn_logits, dim=2)
+
         # Any nodes that don't have any connections (i.e. nodes created to pad the input data to the
         # required size) will have all their attention logits equal to -inf. In this case, softmax will
         # output NaN, so replace all NaN values with 0.
