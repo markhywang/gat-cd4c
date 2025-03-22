@@ -3,30 +3,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-# Set device
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
-elif torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
-
 
 class GraphAttentionNetwork(nn.Module):
-    def __init__(self, in_features: int, out_features: int, num_edge_features: int,
+    def __init__(self, device, in_features: int, out_features: int, num_edge_features: int,
                  hidden_size: int, num_layers: int, num_attn_heads: int, dropout: int, pooling_dim: int) -> None:
         super().__init__()
 
         if num_layers == 1:
-            layers = [GraphAttentionLayer(in_features, out_features, num_edge_features, dropout=dropout, use_leaky_relu=False)]
+            layers = [GraphAttentionLayer(device, in_features, out_features, num_edge_features, dropout=0.0, use_leaky_relu=False)]
         else:
-            layers = [GraphAttentionLayer(in_features, hidden_size, num_edge_features, num_attn_heads, dropout=dropout)]
+            layers = [GraphAttentionLayer(device, in_features, hidden_size, num_edge_features, num_attn_heads, dropout=dropout)]
             for i in range(num_layers - 2):
-                layers.append(GraphAttentionLayer(hidden_size, hidden_size, num_edge_features, num_attn_heads, dropout=dropout))
-            layers.append(GraphAttentionLayer(hidden_size, out_features, num_edge_features, dropout=dropout, use_leaky_relu=False))
+                layers.append(GraphAttentionLayer(device, hidden_size, hidden_size, num_edge_features, num_attn_heads, dropout=dropout))
+            layers.append(GraphAttentionLayer(device, hidden_size, out_features, num_edge_features, dropout=0.0, use_leaky_relu=False))
 
         self.gat_layers = nn.Sequential(*layers)
-        self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, pooling_dim, dropout)
+        self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, pooling_dim, dropout=0.0)
 
     def forward(self, node_features, edge_features, adjacency_matrix) -> torch.Tensor:
         # Initial node feature shape: [B, N, F_in]
@@ -78,10 +70,11 @@ class GlobalAttentionPooling(nn.Module):
 
 
 class GraphAttentionLayer(nn.Module):
-    def __init__(self, in_features: int, out_features: int,
+    def __init__(self, device, in_features: int, out_features: int,
                  num_edge_features: int, num_attn_heads: int = 1, dropout: int = 0.2, use_leaky_relu: bool = True) -> None:
         super().__init__()
-
+        
+        self.device = device
         self.projection = nn.Linear(in_features, out_features)
         self.layer_norm_1 = nn.LayerNorm(in_features)
 
@@ -113,7 +106,7 @@ class GraphAttentionLayer(nn.Module):
     def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) \
             -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # Initial node_features shape: [B, N, F_in]
-        node_features, edge_features, adjacency_matrix = [t.to(device) for t in x]
+        node_features, edge_features, adjacency_matrix = [t.to(self.device) for t in x]
         batch_size, num_nodes, num_node_features = node_features.shape
 
         # Save residual for later addition.
@@ -184,14 +177,11 @@ class GraphAttentionLayer(nn.Module):
         # The shape is still [B, N, N, num_heads]
         attn_logits = self.attn_leaky_relu(attn_logits)
         attn_coeffs = F.softmax(attn_logits, dim=2)
+
         # Any nodes that don't have any connections (i.e. nodes created to pad the input data to the
         # required size) will have all their attention logits equal to -inf. In this case, softmax will
         # output NaN, so replace all NaN values with 0.
         attn_coeffs = attn_coeffs.nan_to_num(0)
-
-        # Andrej Karpathy does this, so I guess it works (not sure why)
-        # The shape is still [B, N, N, num_heads]
-        attn_coeffs = self.dropout(attn_coeffs)
 
         # Final shape: [B, N, N, num_heads]
         return attn_coeffs
