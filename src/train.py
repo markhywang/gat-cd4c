@@ -243,7 +243,7 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Dropout percentage for graph attention layers")
     parser.add_argument("--leaky_relu_slope", type=float, required=False, default=0.2,
                         help="The slope for the Leaky ReLU activation function")
-    parser.add_argument("--pooling_dim", type=float, required=False, default=128,
+    parser.add_argument("--pooling_dim", type=int, required=False, default=128,
                         help="Pooling dimension")
 
     return parser
