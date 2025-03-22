@@ -116,7 +116,7 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
         cum_training_acc_preds += accuracy_func(preds, pchembl_score, threshold=7.0)
 
         optimizer.zero_grad()
-        loss.backward()
+        loss.backward()      
         optimizer.step()
 
     avg_loss = cum_training_loss / cum_training_samples
