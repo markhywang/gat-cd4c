@@ -125,19 +125,15 @@ class DrugMolecule:
 
 
 class DrugProteinDataset(Dataset):
-    def __init__(self, data_folder: str) -> None:
+    def __init__(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame) -> None:
         super().__init__()
 
-        data_df = pd.read_csv(f'{data_folder}/filtered_cancer_all.csv')
-        # Filter out rows that don't have a SMILES string for the drug.
-        data_df = data_df.loc[~data_df['smiles'].isna(), :]
         self.size = data_df.shape[0]
 
         self.pchembl_scores = data_df['pChEMBL_Value'].tolist()
         self.protein_ids = data_df['Target_ID'].tolist()
         self.smiles_strs = data_df['smiles'].tolist()
 
-        protein_embeddings_df = pd.read_csv(f'{data_folder}/protein_embeddings.csv', index_col=0)
         self.protein_embeddings_dict = {x: torch.tensor(protein_embeddings_df.loc[x, :].tolist())
                                         for x in protein_embeddings_df.index}
 
@@ -161,7 +157,8 @@ class DrugProteinDataset(Dataset):
         edge_features = drug_graph.edge_tensor
         adjacency_matrix = drug_graph.adjacency_tensor
 
+        reshaped_protein_embedding = protein_embedding.unsqueeze(0).repeat(node_features.shape[0], 1)
         node_features = torch.cat(
-            (node_features, protein_embedding.unsqueeze(0).repeat(node_features.shape[0], 1)), dim=-1)
+            (node_features, reshaped_protein_embedding), dim=-1)
 
         return node_features, edge_features, adjacency_matrix, pchembl_score

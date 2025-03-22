@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from typing import List
 
+
 def walk_through_dir(dir_path):
     """
     Walks through dir_path returning its contents.
@@ -84,20 +85,23 @@ def plot_predictions(
     plt.legend(prop={"size": 14})
 
 
-# Calculate accuracy (a classification metric)
-def accuracy_fn(y_true, y_pred):
-    """Calculates accuracy between truth labels and predictions.
+# Calculate number of accurate predictions (given regression outputs)
+def accuracy_func(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float) -> int:
+    """Calculates regression accuracy given labels and predictions.
 
     Args:
-        y_true (torch.Tensor): Truth labels for predictions.
         y_pred (torch.Tensor): Predictions to be compared to predictions.
+        y_true (torch.Tensor): Truth labels for predictions.
+        threshold (float): Threshold for predicting a classification of 1
 
     Returns:
-        [torch.float]: Accuracy value between y_true and y_pred, e.g. 78.45
+        [int]: Number of accurate predictions, e.g. 783
     """
-    correct = torch.eq(y_true, y_pred).sum().item()
-    acc = (correct / len(y_pred)) * 100
-    return acc
+    above_threshold = (y_pred >= threshold) & (y_true >= threshold)
+    below_threshold = (y_pred < threshold) & (y_true < threshold)
+    num_above_threshold = int(above_threshold.sum().item())
+    num_below_threshold = int(below_threshold.sum().item())
+    return num_above_threshold + num_below_threshold
 
 
 def print_train_time(start, end, device=None):
@@ -121,26 +125,22 @@ def plot_loss_curves(results):
     """Plots training curves of a results dictionary.
 
     Args:
-        results (dict): dictionary containing list of values, e.g.
-            {"train_loss": [...],
-             "train_acc": [...],
-             "test_loss": [...],
-             "test_acc": [...]}
+        results (pd.DataFrame): dataframe containing train_loss, train_acc, validation_loss, and validation_acc
     """
-    loss = results["train_loss"]
-    test_loss = results["test_loss"]
+    loss = results["train_loss"].tolist()
+    validation_loss = results["validation_loss"].tolist()
 
-    accuracy = results["train_acc"]
-    test_accuracy = results["test_acc"]
+    accuracy = results["train_acc"].tolist()
+    validation_accuracy = results["validation_acc"].tolist()
 
-    epochs = range(len(results["train_loss"]))
+    epochs = range(results.shape[0])
 
     plt.figure(figsize=(15, 7))
 
     # Plot loss
     plt.subplot(1, 2, 1)
     plt.plot(epochs, loss, label="train_loss")
-    plt.plot(epochs, test_loss, label="test_loss")
+    plt.plot(epochs, validation_loss, label="validation_loss")
     plt.title("Loss")
     plt.xlabel("Epochs")
     plt.legend()
@@ -148,10 +148,12 @@ def plot_loss_curves(results):
     # Plot accuracy
     plt.subplot(1, 2, 2)
     plt.plot(epochs, accuracy, label="train_accuracy")
-    plt.plot(epochs, test_accuracy, label="test_accuracy")
+    plt.plot(epochs, validation_accuracy, label="validation_accuracy")
     plt.title("Accuracy")
     plt.xlabel("Epochs")
     plt.legend()
+
+    plt.show()
 
 
 def pred_and_plot_image(
@@ -220,7 +222,7 @@ def pred_and_plot_image(
     plt.title(title)
     plt.axis(False)
 
-def set_seeds(seed: int=42):
+def set_seeds(seed: int = 42) -> None:
     """Sets random sets for torch operations.
 
     Args:
@@ -237,3 +239,23 @@ def count_model_params(model: nn.Module, only_trainable: bool = False) -> int:
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
     else:
         return sum(p.numel() for p in model.parameters())
+
+
+def plot_preds_vs_labels(preds: torch.Tensor, labels: torch.Tensor) -> None:
+    preds = preds.cpu().detach().numpy()
+    labels = labels.cpu().detach().numpy()
+
+    plt.figure(figsize=(6, 6))
+    plt.scatter(labels, preds, alpha=0.5, label='Predictions')
+
+    # Plot the y = x line
+    min_val = min(labels.min(), preds.min())
+    max_val = max(labels.max(), preds.max())
+    plt.plot([min_val, max_val], [min_val, max_val], 'r--', label='y = x')
+
+    plt.xlabel('True Labels')
+    plt.ylabel('Predictions')
+    plt.title('Predictions vs. True Labels')
+    plt.legend()
+    plt.grid(True)
+    plt.show()

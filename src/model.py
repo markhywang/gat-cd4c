@@ -3,10 +3,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
+# Set device
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
+
 
 class GraphAttentionNetwork(nn.Module):
-    def __init__(self, in_features: int, out_features: int, num_edge_features: int, hidden_size: int,
-                 num_layers: int, num_attn_heads: int) -> None:
+    def __init__(self, in_features: int, out_features: int, num_edge_features: int,
+                 hidden_size: int, num_layers: int, num_attn_heads: int) -> None:
         super().__init__()
 
         if num_layers == 1:
@@ -26,15 +34,10 @@ class GraphAttentionNetwork(nn.Module):
 
         # [B, N, F_in] -> [B, N, F_out]
         updated_node_features, _, _ = self.gat_layers(input_tuple)
-        
+
         # Perform global attention pooling for final learning process
         # [B, N, F_out] -> [B, 1]
         pchembl_scores = self.global_attn_pooling(updated_node_features)
-
-        # Normalize and scale pChEMBL scores to (0, 14)
-        # The shape is still [B, 1]
-        pchembl_scores = F.softplus(pchembl_scores)
-        pchembl_scores = pchembl_scores * (14 / F.softplus(torch.tensor(1.0)))
 
         # Final shape: [B, 1]
         return pchembl_scores
@@ -46,7 +49,7 @@ class GlobalAttentionPooling(nn.Module):
 
         self.global_attn = nn.Linear(in_features, 1)
         self.dropout = nn.Dropout(0.2)
-        
+
         self.final_projection = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
             nn.ReLU(),
@@ -57,12 +60,12 @@ class GlobalAttentionPooling(nn.Module):
         """
         The input node features (x) has shape: [B, N, F_out]
         """
-        attn_logits = self.attn(x)  # [B, N, 1]
+        attn_logits = self.global_attn(x)  # [B, N, 1]
         attn_scores = F.softmax(attn_logits, dim=1)  # Normalize across nodes
-        
+
         # Apply dropout to attention scores
-        attn_scores = self.dropout(attn_scores)  
-        
+        attn_scores = self.dropout(attn_scores)
+
         # [B, 1, N] @ [B, N, F_out] -> [B, 1, F_out]
         pooled_features = attn_scores.transpose(1, 2) @ x
 
@@ -101,11 +104,20 @@ class GraphAttentionLayer(nn.Module):
         nn.init.xavier_uniform_(self.projection.weight.data, gain=math.sqrt(2))
         nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
 
+        # Add residual projection if in_features doesn't match out_features.
+        if in_features != out_features:
+            self.residual_proj = nn.Linear(in_features, out_features)
+        else:
+            self.residual_proj = nn.Identity()
+
     def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) \
             -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # Initial node_features shape: [B, N, F_in]
-        node_features, edge_features, adjacency_matrix = x
+        node_features, edge_features, adjacency_matrix = [t.to(device) for t in x]
         batch_size, num_nodes, num_node_features = node_features.shape
+
+        # Save residual for later addition.
+        residual = node_features
 
         # [B, N, F_in] -> [B, N, F_out]
         new_node_features = self.projection(self.layer_norm_1(node_features))
@@ -117,16 +129,20 @@ class GraphAttentionLayer(nn.Module):
         # attn_coeffs shape: [B, N, N, num_heads]
         attn_coeffs = self._compute_attn_coeffs(new_node_features, edge_features, adjacency_matrix, num_nodes)
 
-        # [B, N, num_heads, F_out // num_geads] -> [B, N, F_out]
+        # [B, N, num_heads, F_out // num_attn_heads] -> [B, N, F_out]
         new_node_features = self._execute_message_passing(new_node_features, attn_coeffs, batch_size, num_nodes)
 
         # Do final projection and dropout
-        # The shape is still [B, N, F_out]
+        # The shape remains [B, N, F_out]
         new_node_features = self.out_projection(new_node_features)
         new_node_features = self.dropout(new_node_features)
 
-        # Finally, perform another LeakyReLU if required
-        # The shape is still [B, N, F_out]
+        # Apply residual connection.
+        # If dimensions differ, project the residual to the correct dimension.
+        residual = self.residual_proj(residual)
+        new_node_features = new_node_features + residual
+
+        # Optionally apply layer normalization and activation.
         if self.use_leaky_relu:
             new_node_features = self.leaky_relu(self.layer_norm_2(new_node_features))
 
@@ -168,6 +184,10 @@ class GraphAttentionLayer(nn.Module):
         # The shape is still [B, N, N, num_heads]
         attn_logits = self.attn_leaky_relu(attn_logits)
         attn_coeffs = F.softmax(attn_logits, dim=2)
+        # Any nodes that don't have any connections (i.e. nodes created to pad the input data to the
+        # required size) will have all their attention logits equal to -inf. In this case, softmax will
+        # output NaN, so replace all NaN values with 0.
+        attn_coeffs = attn_coeffs.nan_to_num(0)
 
         # Andrej Karpathy does this, so I guess it works (not sure why)
         # The shape is still [B, N, N, num_heads]
