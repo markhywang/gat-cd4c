@@ -10,12 +10,12 @@ class GraphAttentionNetwork(nn.Module):
         super().__init__()
 
         if num_layers == 1:
-            layers = [GraphAttentionLayer(device, in_features, out_features, num_edge_features, dropout=dropout, use_leaky_relu=False)]
+            layers = [GraphAttentionLayer(device, in_features, out_features, num_edge_features, dropout=0.0, use_leaky_relu=False)]
         else:
             layers = [GraphAttentionLayer(device, in_features, hidden_size, num_edge_features, num_attn_heads, dropout=dropout)]
             for i in range(num_layers - 2):
                 layers.append(GraphAttentionLayer(device, hidden_size, hidden_size, num_edge_features, num_attn_heads, dropout=dropout))
-            layers.append(GraphAttentionLayer(device, hidden_size, out_features, num_edge_features, dropout=dropout, use_leaky_relu=False))
+            layers.append(GraphAttentionLayer(device, hidden_size, out_features, num_edge_features, dropout=0.0, use_leaky_relu=False))
 
         self.gat_layers = nn.Sequential(*layers)
         self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, pooling_dim, dropout)
@@ -182,10 +182,6 @@ class GraphAttentionLayer(nn.Module):
         # required size) will have all their attention logits equal to -inf. In this case, softmax will
         # output NaN, so replace all NaN values with 0.
         attn_coeffs = attn_coeffs.nan_to_num(0)
-
-        # Andrej Karpathy does this, so I guess it works (not sure why)
-        # The shape is still [B, N, N, num_heads]
-        attn_coeffs = self.dropout(attn_coeffs)
 
         # Final shape: [B, N, N, num_heads]
         return attn_coeffs
