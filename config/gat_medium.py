@@ -15,7 +15,7 @@ args = {
     "scheduler_factor": 0.5,
     "hidden_size": 128,
     "num_layers": 6,
-    "num_attn_heads": 6,
+    "num_attn_heads": 8,
     "dropout": 0.2,
     "leaky_relu_slope": 0.2,
     "pooling_dim": 128,
