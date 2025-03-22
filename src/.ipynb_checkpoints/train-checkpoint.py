@@ -34,8 +34,10 @@ def train_model(args: argparse.Namespace) -> None:
         16,
         args.hidden_size,
         args.num_layers,
-        args.num_attn_heads
-    ).to(torch.float64).to(device)
+        args.num_attn_heads,
+        args.dropout,
+        args.pooling_dim
+    ).to(torch.float32).to(device)
     train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.frac_train,
                                                                 args.frac_validation, args.frac_test,
                                                                 args.use_small_dataset)
@@ -103,7 +105,7 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
 
     for batch_data in progress_bar:
         node_features, edge_features, adjacency_matrix, pchembl_score = [
-            x.to(torch.float64).to(device) for x in batch_data
+            x.to(torch.float32).to(device) for x in batch_data
         ]
 
         preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
@@ -135,7 +137,7 @@ def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss
 
     for batch in validation_loader:
         node_features, edge_features, adjacency_matrix, pchembl_scores = [
-            x.to(torch.float64).to(device) for x in batch
+            x.to(torch.float32).to(device) for x in batch
         ]
         preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
         loss = loss_func(preds, pchembl_scores).item()
@@ -241,6 +243,8 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Dropout percentage for graph attention layers")
     parser.add_argument("--leaky_relu_slope", type=float, required=False, default=0.2,
                         help="The slope for the Leaky ReLU activation function")
+    parser.add_argument("--pooling_dim", type=float, required=False, default=128,
+                        help="Pooling dimension")
 
     return parser
 

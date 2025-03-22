@@ -14,19 +14,19 @@ else:
 
 class GraphAttentionNetwork(nn.Module):
     def __init__(self, in_features: int, out_features: int, num_edge_features: int,
-                 hidden_size: int, num_layers: int, num_attn_heads: int) -> None:
+                 hidden_size: int, num_layers: int, num_attn_heads: int, dropout: int, pooling_dim: int) -> None:
         super().__init__()
 
         if num_layers == 1:
-            layers = [GraphAttentionLayer(in_features, out_features, num_edge_features, use_leaky_relu=False)]
+            layers = [GraphAttentionLayer(in_features, out_features, num_edge_features, dropout=dropout, use_leaky_relu=False)]
         else:
-            layers = [GraphAttentionLayer(in_features, hidden_size, num_edge_features, num_attn_heads)]
+            layers = [GraphAttentionLayer(in_features, hidden_size, num_edge_features, num_attn_heads, dropout=dropout)]
             for i in range(num_layers - 2):
-                layers.append(GraphAttentionLayer(hidden_size, hidden_size, num_edge_features, num_attn_heads))
-            layers.append(GraphAttentionLayer(hidden_size, out_features, num_edge_features, use_leaky_relu=False))
+                layers.append(GraphAttentionLayer(hidden_size, hidden_size, num_edge_features, num_attn_heads, dropout=dropout))
+            layers.append(GraphAttentionLayer(hidden_size, out_features, num_edge_features, dropout=dropout, use_leaky_relu=False))
 
         self.gat_layers = nn.Sequential(*layers)
-        self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, 256)
+        self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, pooling_dim, dropout)
 
     def forward(self, node_features, edge_features, adjacency_matrix) -> torch.Tensor:
         # Initial node feature shape: [B, N, F_in]
@@ -44,11 +44,11 @@ class GraphAttentionNetwork(nn.Module):
 
 
 class GlobalAttentionPooling(nn.Module):
-    def __init__(self, in_features: int, out_features: int = 1, hidden_dim: int = 256) -> None:
+    def __init__(self, in_features: int, out_features: int = 1, hidden_dim: int = 128, dropout: int = 0.2) -> None:
         super().__init__()
 
         self.global_attn = nn.Linear(in_features, 1)
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(dropout)
 
         self.final_projection = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
@@ -79,7 +79,7 @@ class GlobalAttentionPooling(nn.Module):
 
 class GraphAttentionLayer(nn.Module):
     def __init__(self, in_features: int, out_features: int,
-                 num_edge_features: int, num_attn_heads: int = 1, use_leaky_relu: bool = True) -> None:
+                 num_edge_features: int, num_attn_heads: int = 1, dropout: int = 0.2, use_leaky_relu: bool = True) -> None:
         super().__init__()
 
         self.projection = nn.Linear(in_features, out_features)
@@ -98,7 +98,7 @@ class GraphAttentionLayer(nn.Module):
         # Final MLP layer because apparently that's what every person does in papers
         self.out_projection = nn.Linear(out_features, out_features)
 
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(dropout)
 
         # Initialize the projection weights and attention matrix using a Xavier uniform distribution.
         nn.init.xavier_uniform_(self.projection.weight.data, gain=math.sqrt(2))
