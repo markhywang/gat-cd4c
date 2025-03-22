@@ -40,7 +40,7 @@ class GraphAttentionNetwork(nn.Module):
         pchembl_scores = self.global_attn_pooling(updated_node_features)
 
         # Final shape: [B, 1]
-        return torch.sigmoid(pchembl_scores)
+        return pchembl_scores
 
 
 class GlobalAttentionPooling(nn.Module):
