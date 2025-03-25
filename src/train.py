@@ -228,9 +228,9 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Beta parameter for Huber loss function")
 
     # Optimizer parameters
-    parser.add_argument("--weight_decay", type=float, required=False, default=1e-4,
+    parser.add_argument("--weight_decay", type=float, required=False, default=1e-3,
                         help="Weight decay for optimizer")
-    parser.add_argument("--lr", type=float, required=False, default=3e-3,
+    parser.add_argument("--lr", type=float, required=False, default=3e-4,
                         help="Learning rate")
     parser.add_argument("--momentum", type=float, required=False, default=0.9,
                         help="Momentum for appropriate optimizers (e.g. SGD)")
