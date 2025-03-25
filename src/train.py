@@ -24,12 +24,12 @@ def train_model(args: argparse.Namespace, m_device = device) -> None:
     set_seeds()
 
     # Set device to device
-    global device 
+    global device
     device = m_device
 
     model = GraphAttentionNetwork(
         device,
-        333,
+        350,
         1,
         16,
         args.hidden_size,
@@ -40,7 +40,7 @@ def train_model(args: argparse.Namespace, m_device = device) -> None:
     ).to(torch.float32).to(device)
 
     print(f'Model parameters: {count_model_params(model)}')
-    
+
     train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.frac_train,
                                                                 args.frac_validation, args.frac_test,
                                                                 args.use_small_dataset)
@@ -121,7 +121,7 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
         cum_training_acc_preds += accuracy_func(preds, pchembl_score, threshold=7.0)
 
         optimizer.zero_grad()
-        loss.backward()      
+        loss.backward()
         optimizer.step()
 
     avg_loss = cum_training_loss / cum_training_samples

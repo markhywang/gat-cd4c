@@ -95,6 +95,7 @@ class DrugMolecule:
             "UNSPECIFIED": 0, "S": 1, "SP": 2, "SP2": 3, "SP3": 4,
             "SP2D": 5, "SP3D": 6, "SP3D2": 7, "OTHER": 8
         }
+        atomic_nums = [1, 3, 5, 6, 7, 8, 9, 11, 14, 15, 16, 17, 19, 30, 34, 35, 53]
 
         processed_features = []
         for key, val in features.items():
@@ -102,8 +103,20 @@ class DrugMolecule:
                 one_hot_list = [0] * len(hybridization_encoder_dict)
                 one_hot_list[hybridization_encoder_dict[val]] = 1
                 processed_features.extend(one_hot_list)
+            elif key == 'atomic_num':
+                one_hot_list = [0] * (len(atomic_nums) + 1)
+                try:
+                    idx = atomic_nums.index(val)
+                    # The element in the one-hot list corresponding to the current atom is set as 1.
+                    one_hot_list[idx] = 1
+                except ValueError:
+                    # The last element in the one-hot list is used as a catch-all for all atoms not encountered
+                    # during training (which are atoms that tend to not be part of organic molecules).
+                    one_hot_list[-1] = 1
+                processed_features.extend(one_hot_list)
             else:
                 processed_features.append(val)
+
         return processed_features
 
     def _process_edge_features(self, features: dict[str, int | str]) -> list[int]:
