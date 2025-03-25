@@ -104,15 +104,15 @@ class DrugMolecule:
                 one_hot_list[hybridization_encoder_dict[val]] = 1
                 processed_features.extend(one_hot_list)
             elif key == 'atomic_num':
-                one_hot_list = [0] * (len(atomic_nums) + 1)
+                one_hot_list = [0] * len(atomic_nums)
                 try:
                     idx = atomic_nums.index(val)
                     # The element in the one-hot list corresponding to the current atom is set as 1.
                     one_hot_list[idx] = 1
                 except ValueError:
-                    # The last element in the one-hot list is used as a catch-all for all atoms not encountered
-                    # during training (which are atoms that tend to not be part of organic molecules).
-                    one_hot_list[-1] = 1
+                    # If the element is not commonly found in organic molecules (i.e. wasn't encountered
+                    # during training), then ignore the atomic number.
+                    pass
                 processed_features.extend(one_hot_list)
             else:
                 processed_features.append(val)

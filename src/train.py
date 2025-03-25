@@ -29,7 +29,7 @@ def train_model(args: argparse.Namespace, m_device = device) -> None:
 
     model = GraphAttentionNetwork(
         device,
-        350,
+        349,
         1,
         16,
         args.hidden_size,
