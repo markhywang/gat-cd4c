@@ -27,9 +27,14 @@ class MoleculeViewer(tk.Tk):
 
         self.title("CD4C Molecule Viewer")
         self.state("zoomed")
-        # Expand on the right and allow vertical expansion
+        # Use a white background.
+        self.configure(bg="white")
+
+        # Make the 2nd column wider than the 3rd column.
         self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(2, weight=10)
         self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
 
         data_df, protein_embeddings_df = load_data(data_path)
         self.dataset = DrugProteinDataset(data_df, protein_embeddings_df)
@@ -67,37 +72,54 @@ class MoleculeViewer(tk.Tk):
         self._create_settings_frame()
 
         # Right Panel (Matplotlib Plot)
-        self.fig = Figure()
-        self.ax = self.fig.add_subplot()
-        self.ax.set_xlim(0, 1200)
-        self.ax.set_ylim(1200, 0)  # Flip y-axis
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
+        self.fig, self.ax, self.canvas = self._init_canvas(column=1, rowspan=2)
+        self.fig2, self.ax2, self.canvas2 = self._init_canvas(column=2)
+        tk.Label(self, text="Test 123").grid(row=1, column=2)
 
-        # Embed Matplotlib plot in Tkinter
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
-        self.canvas.get_tk_widget().grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+    def _init_canvas(self, column: int, size: int = 1200, **kwargs) -> tuple[Figure, plt.Axes, FigureCanvasTkAgg]:
+        fig = Figure()
+        # Set the background colour of the figure to match the background color of the window.
+        #fig.patch.set_facecolor("#f0f0f0")
+        ax = fig.add_subplot()
+        ax.set_xlim(0, size)
+        ax.set_ylim(size, 0)  # Flip y-axis
+        ax.set_xticks([])
+        ax.set_yticks([])
+        # Add a placeholder white image.
+        ax.imshow(Image.new('RGB', (size, size), (255, 255, 255)))
+
+        canvas = FigureCanvasTkAgg(fig, master=self)
+        canvas.get_tk_widget().grid(row=0, column=column, sticky="nsew", padx=10, pady=10, **kwargs)
+
+        return fig, ax, canvas
 
     def _create_settings_frame(self) -> None:
+        # Use a larger font.
+        font = ("Helvetica", 12)
+
         # Create a left panel that contains various settings that the user can modify.
         settings_frame = tk.Frame(self)
-        settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsw")
+        settings_frame.grid(row=0, column=0, rowspan=2, padx=10, sticky="nsw")
 
-        tk.Label(settings_frame, text="Protein ChEMBL ID:").pack(pady=5)
+        # Add a spacer at the top.
+        tk.Label(settings_frame, text="", height=2).pack()
+
+        tk.Label(settings_frame, text="Protein ChEMBL ID:", font=font).pack(padx=20)
         self.protein_dropdown = ttk.Combobox(
             settings_frame, values=[""] + list(dict.fromkeys(self.dataset.protein_ids)),
-            state="readonly")
-        self.protein_dropdown.pack(pady=5)
+            state="readonly", font=font)
+        self.protein_dropdown.pack(pady=(5, 20), padx=20)
         self.protein_dropdown.current(0)
         self.protein_dropdown.bind("<<ComboboxSelected>>", self._update_drug_dropdown)
 
-        tk.Label(settings_frame, text="Drug ChEMBL ID:").pack(pady=5)
-        self.drug_dropdown = ttk.Combobox(settings_frame, state="readonly")
-        self.drug_dropdown.pack(pady=5)
+        tk.Label(settings_frame, text="Drug ChEMBL ID:", font=font).pack(padx=10)
+        self.drug_dropdown = ttk.Combobox(settings_frame, state="readonly", font=font)
+        self.drug_dropdown.pack(pady=(5, 20), padx=20)
         self._update_drug_dropdown()
 
-        self.submit_button = tk.Button(settings_frame, text="Draw Molecule", command=self._update_display)
-        self.submit_button.pack(pady=10)  # Add some padding
+        self.submit_button = tk.Button(settings_frame, text="Draw Molecule", font=font,
+                                       command=self._update_display)
+        self.submit_button.pack(padx=20)
 
     def _update_drug_dropdown(self, event: tk.Event = None) -> None:
         selected_protein = self.protein_dropdown.get()
@@ -218,7 +240,8 @@ class MoleculeViewer(tk.Tk):
 
 
 def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    data_df = pd.read_csv(f'{data_path}/filtered_cancer_all.csv')
+    # TODO - change to using filtered_cancer_all.csv dataset
+    data_df = pd.read_csv(f'{data_path}/filtered_cancer_small.csv')
     protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
     return data_df, protein_embeddings_df
 
