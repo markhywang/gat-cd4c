@@ -84,8 +84,9 @@ class MoleculeViewer(tk.Tk):
         settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsw")
 
         tk.Label(settings_frame, text="Protein ChEMBL ID:").pack(pady=5)
-        self.protein_dropdown = ttk.Combobox(settings_frame, values=[""] + list(set(self.dataset.protein_ids)),
-                                      state="readonly")
+        self.protein_dropdown = ttk.Combobox(
+            settings_frame, values=[""] + list(dict.fromkeys(self.dataset.protein_ids)),
+            state="readonly")
         self.protein_dropdown.pack(pady=5)
         self.protein_dropdown.current(0)
         self.protein_dropdown.bind("<<ComboboxSelected>>", self._update_drug_dropdown)
