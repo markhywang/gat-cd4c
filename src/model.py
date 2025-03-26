@@ -47,7 +47,7 @@ class GlobalAttentionPooling(nn.Module):
 
         self.final_projection = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(hidden_dim, out_features)
         )
 
@@ -81,8 +81,16 @@ class GraphAttentionLayer(nn.Module):
         self.node_projection = nn.Linear(in_features, out_features)
         self.layer_norm_1 = nn.LayerNorm(in_features)
 
-        self.edge_projection = nn.Linear(num_edge_features, num_edge_features)
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(num_edge_features, 2 * num_edge_features),
+            nn.GELU(),
+            nn.Linear(2 * num_edge_features, num_edge_features)
+        )
         self.layer_norm_2 = nn.LayerNorm(num_edge_features)
+        self.edge_gate = nn.Sequential(
+            nn.Linear(num_edge_features, 1),
+            nn.Sigmoid()
+        )
 
         self.use_leaky_relu = use_leaky_relu
         if use_leaky_relu:
@@ -98,9 +106,12 @@ class GraphAttentionLayer(nn.Module):
         self.out_node_projection = nn.Linear(out_features, out_features)
         self.dropout = nn.Dropout(dropout)
 
-        # Initialize the projection weights and attention matrix using a Xavier uniform distribution.
+        # Initialize necessary parameters using a Xavier uniform distribution.
         nn.init.xavier_uniform_(self.node_projection.weight.data, gain=math.sqrt(2))
         nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
+        nn.init.xavier_uniform_(self.edge_mlp[0].weight, gain=math.sqrt(2))
+        nn.init.xavier_uniform_(self.edge_mlp[2].weight, gain=math.sqrt(2))
+        nn.init.xavier_uniform_(self.edge_gate[0].weight, gain=math.sqrt(2))
 
         # Add residual projection if in_features doesn't match out_features.
         if in_features != out_features:
@@ -122,7 +133,10 @@ class GraphAttentionLayer(nn.Module):
         new_node_features = self.node_projection(self.layer_norm_1(node_features))
 
         # [B, N, N, F_edge] -> [B, N, N, F_edge]
-        new_edge_features = self.edge_projection(self.layer_norm_2(edge_features))
+        edge_normalized = self.layer_norm_2(edge_features)
+        edge_update = self.edge_mlp(edge_normalized)
+        gate = self.edge_gate(edge_residual)  # Gate uses original features
+        new_edge_features = gate * edge_update + (1 - gate) * edge_residual
 
         # Split the node_features for every attention head.
         # [B, N, F_out] -> [B, N, num_heads, F_out // num_heads]
@@ -143,7 +157,6 @@ class GraphAttentionLayer(nn.Module):
         # If dimensions differ, project the residual to the correct dimension.
         node_residual = self.residual_proj(node_residual)
         new_node_features = new_node_features + node_residual
-        new_edge_features = new_edge_features + edge_residual
 
         # Optionally apply layer normalization and activation.
         if self.use_leaky_relu:
