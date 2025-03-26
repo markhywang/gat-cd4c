@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 import matplotlib.pyplot as plt
+import rdkit.Chem
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import Normalize
@@ -120,6 +121,10 @@ class MoleculeViewer(tk.Tk):
         node_contributions = self._get_node_contributions(idx)
         mol = self.dataset.drug_graphs[idx].mol
 
+        self._draw_molecule(mol, node_contributions)
+
+    def _draw_molecule(self, mol: rdkit.Chem.Mol, node_contributions: list[float],
+                       contribution_scaler: float = 0.3) -> None:
         # Generate 2D coordinates for the molecule.
         AllChem.Compute2DCoords(mol)
 
@@ -128,53 +133,54 @@ class MoleculeViewer(tk.Tk):
         drawer.DrawMolecule(mol)
         drawer.FinishDrawing()
 
-        coords = []
-        for atom in range(mol.GetNumAtoms()):
-            coords.append(drawer.GetDrawCoords(atom))
-
-        # Convert the drawing to a PIL Image
+        # Convert the drawing to a PIL Image.
         png_data = drawer.GetDrawingText()
         image = Image.open(io.BytesIO(png_data))
         self.ax.imshow(image)
 
-        for i in range(len(coords)):
-            # Scale the coordinates to match the image dimensions
-            x, y = coords[i]
-            contribution = node_contributions[i] / 3
-            self._create_gradient_circle(x, y, 200, 'Reds' if contribution < 0 else 'Greens', center_alpha=abs(contribution))
+        for i in range(mol.GetNumAtoms()):
+            # Get the coordinates for the ith atom.
+            x, y = drawer.GetDrawCoords(i)
+            # Calculate the scaled contribution of this atom
+            scaled_contribution = max(-1.0, min(1.0, node_contributions[i] * contribution_scaler))
+
+            color_scheme = 'Reds' if scaled_contribution < 0 else 'Greens'
+            # Create a circle around this atom to show its relative contribution to the interaction strength.
+            self._create_gradient_circle(x, y, 200, color_scheme, center_alpha=abs(scaled_contribution))
 
         self.canvas.draw()
 
-    def _create_gradient_circle(self, x: int, y: int, radius: int, color: str,
+    def _create_gradient_circle(self, x: int, y: int, radius: int, color_scheme: str,
                                 center_alpha: float = 0.3, edge_alpha: float = 0) -> None:
-        # Create a grid for the gradient
+        # Create a grid for the gradient.
         grid_size = 500
         x_vals = np.linspace(x - radius, x + radius, grid_size)
         y_vals = np.linspace(y - radius, y + radius, grid_size)
-        X, Y = np.meshgrid(x_vals, y_vals)
+        x_grid, y_grid = np.meshgrid(x_vals, y_vals)
 
-        # Compute distances from the center
-        dist_from_center = np.sqrt((X - x) ** 2 + (Y - y) ** 2)
+        # Compute distances from the center of the circle.
+        dist_from_center = np.sqrt((x_grid - x) ** 2 + (y_grid - y) ** 2)
 
-        # Normalize distances
+        # Linearly scale the distances to be from 0 to the radius.
         norm = Normalize(vmin=0, vmax=radius)
         gradient = norm(dist_from_center)
-        gradient = np.clip(1 - gradient, 0, 1)  # More intense color inside, fading outward
+        # The center should have the most intense color, fading outwars from there.
+        gradient = np.clip(1 - gradient, 0, 1)
 
-        # Fetch the specified color map
-        color_map = plt.get_cmap(color)
+        # Fetch the specified color map.
+        color_map = plt.get_cmap(color_scheme)
         rgba_colors = color_map(gradient)
 
-        # Adjust the alpha (opacity) channel
+        # Adjust the alpha (opacity) channel to fade out towards the edge.
         alpha_gradient = np.clip(center_alpha * gradient + edge_alpha * (1 - gradient), edge_alpha, center_alpha)
         rgba_colors[..., 3] = alpha_gradient
 
-        # Overlay the gradient image
+        # Overlay the gradient circle.
         self.ax.imshow(
             rgba_colors,
             extent=(x - radius, x + radius, y - radius, y + radius),
             origin='lower',
-            interpolation='bilinear',
+            interpolation='bilinear'
         )
 
     def _get_node_contributions(self, idx: int) -> list[float]:
@@ -182,10 +188,10 @@ class MoleculeViewer(tk.Tk):
         # Count the number of atoms in the drug molecule (excluding atoms that were added for padding).
         num_real_nodes = (adjacency_matrix.sum(dim=1) != 0).sum().item()
 
-        # Add an extra dimension to allow for multiple samples in a batch.
-        node_features = node_features.unsqueeze(0).repeat(num_real_nodes, 1, 1)
-        edge_features = edge_features.repeat(num_real_nodes, 1, 1, 1)
-        adjacency_matrix = adjacency_matrix.repeat(num_real_nodes, 1, 1)
+        # Add an extra dimension to allow for masking one node in each sample.
+        node_features = node_features.unsqueeze(0).repeat(num_real_nodes + 1, 1, 1)
+        edge_features = edge_features.repeat(num_real_nodes + 1, 1, 1, 1)
+        adjacency_matrix = adjacency_matrix.repeat(num_real_nodes + 1, 1, 1)
 
         for i in range(num_real_nodes):
             # Mask the node features for the ith node.
@@ -198,13 +204,14 @@ class MoleculeViewer(tk.Tk):
             adjacency_matrix[i, :, i] = 0.0
 
         preds = self.model(node_features, edge_features, adjacency_matrix).squeeze(-1).tolist()
-        avg_pred = sum(preds) / num_real_nodes
+        # The real pChEMBL prediction uses the whole drug graph without masking any nodes.
+        real_pred = preds.pop()
         node_contributions = []
         for x in preds:
             # The contribution of a node is given by the change in the pChEMBL prediction when that
-            # node is masked (if the prediction drops when the node is masked, then the node has a
-            # positive contribution).
-            node_contributions.append(avg_pred - x)
+            # node is masked (e.g. if the prediction drops when the node is masked, then the node has
+            # a positive contribution).
+            node_contributions.append(real_pred - x)
 
         return node_contributions
 
