@@ -4,6 +4,7 @@ from tkinter import ttk
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.colors import Normalize
 
 from rdkit.Chem import AllChem
 from rdkit.Chem.Draw import rdMolDraw2D
@@ -65,9 +66,12 @@ class MoleculeViewer(tk.Tk):
         self._create_settings_frame()
 
         # Right Panel (Matplotlib Plot)
-        self.fig = Figure(figsize=(5, 4), dpi=100)
+        self.fig = Figure()
         self.ax = self.fig.add_subplot()
-        self._update_display()
+        self.ax.set_xlim(0, 1200)
+        self.ax.set_ylim(1200, 0)  # Flip y-axis
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
 
         # Embed Matplotlib plot in Tkinter
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
@@ -131,21 +135,52 @@ class MoleculeViewer(tk.Tk):
         # Convert the drawing to a PIL Image
         png_data = drawer.GetDrawingText()
         image = Image.open(io.BytesIO(png_data))
-
         self.ax.imshow(image)
-        # Set axis limits and remove ticks
-        self.ax.set_xlim(0, 1200)
-        self.ax.set_ylim(1200, 0)  # Flip y-axis
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
+
+        for i in range(len(coords)):
+            # Scale the coordinates to match the image dimensions
+            x, y = coords[i]
+            contribution = node_contributions[i] / 3
+            self._create_gradient_circle(x, y, 200, 'Reds' if contribution < 0 else 'Greens', center_alpha=abs(contribution))
 
         self.canvas.draw()
 
+    def _create_gradient_circle(self, x: int, y: int, radius: int, color: str,
+                                center_alpha: float = 0.3, edge_alpha: float = 0) -> None:
+        # Create a grid for the gradient
+        grid_size = 500
+        x_vals = np.linspace(x - radius, x + radius, grid_size)
+        y_vals = np.linspace(y - radius, y + radius, grid_size)
+        X, Y = np.meshgrid(x_vals, y_vals)
+
+        # Compute distances from the center
+        dist_from_center = np.sqrt((X - x) ** 2 + (Y - y) ** 2)
+
+        # Normalize distances
+        norm = Normalize(vmin=0, vmax=radius)
+        gradient = norm(dist_from_center)
+        gradient = np.clip(1 - gradient, 0, 1)  # More intense color inside, fading outward
+
+        # Fetch the specified color map
+        color_map = plt.get_cmap(color)
+        rgba_colors = color_map(gradient)
+
+        # Adjust the alpha (opacity) channel
+        alpha_gradient = np.clip(center_alpha * gradient + edge_alpha * (1 - gradient), edge_alpha, center_alpha)
+        rgba_colors[..., 3] = alpha_gradient
+
+        # Overlay the gradient image
+        self.ax.imshow(
+            rgba_colors,
+            extent=(x - radius, x + radius, y - radius, y + radius),
+            origin='lower',
+            interpolation='bilinear',
+        )
 
     def _get_node_contributions(self, idx: int) -> list[float]:
         node_features, edge_features, adjacency_matrix, pchembl_score = self.dataset[idx]
         # Count the number of atoms in the drug molecule (excluding atoms that were added for padding).
-        num_real_nodes = (adjacency_matrix.sum(dim=1) == 0).sum().item()
+        num_real_nodes = (adjacency_matrix.sum(dim=1) != 0).sum().item()
 
         # Add an extra dimension to allow for multiple samples in a batch.
         node_features = node_features.unsqueeze(0).repeat(num_real_nodes, 1, 1)

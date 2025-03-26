@@ -1,3 +1,4 @@
+import rdkit.Chem
 from rdkit import Chem
 from typing import Any
 import pandas as pd
@@ -9,12 +10,13 @@ import torch.nn.functional as F
 
 class DrugMolecule:
     def __init__(self, smiles_str: str) -> None:
-        self.mol, self.node_features, self.edge_features, self.adjacency_list = self._construct_molecular_graph(smiles_str)
+        self.mol, self.node_features, self.edge_features, self.adjacency_list = (
+            self._construct_molecular_graph(smiles_str))
         self.num_nodes = len(self.node_features)
 
         self.node_tensor, self.edge_tensor, self.adjacency_tensor = self._tensor_preprocess()
 
-    def _construct_molecular_graph(self, smiles_str: str) -> tuple[list[Any], list[Any], list[Any]]:
+    def _construct_molecular_graph(self, smiles_str: str) -> tuple[rdkit.Chem.Mol, list[Any], list[Any], list[Any]]:
         mol = Chem.RemoveHs(Chem.MolFromSmiles(smiles_str))  # remove explicit H atoms
 
         node_features = []
