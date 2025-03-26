@@ -5,8 +5,8 @@ import math
 
 
 class GraphAttentionNetwork(nn.Module):
-    def __init__(self, device, in_features: int, out_features: int, num_edge_features: int,
-                 hidden_size: int, num_layers: int, num_attn_heads: int, dropout: int, pooling_dim: int) -> None:
+    def __init__(self, device, in_features: int, out_features: int, num_edge_features: int, hidden_size: int,
+                 num_layers: int, num_attn_heads: int, dropout: float, pooling_dim: int) -> None:
         super().__init__()
 
         if num_layers == 1:
@@ -76,7 +76,7 @@ class GraphAttentionLayer(nn.Module):
     def __init__(self, device, in_features: int, out_features: int,
                  num_edge_features: int, num_attn_heads: int = 1, dropout: int = 0.2, use_leaky_relu: bool = True) -> None:
         super().__init__()
-        
+
         self.device = device
         self.projection = nn.Linear(in_features, out_features)
         self.layer_norm_1 = nn.LayerNorm(in_features)

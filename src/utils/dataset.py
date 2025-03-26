@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 class DrugMolecule:
     def __init__(self, smiles_str: str) -> None:
-        self.node_features, self.edge_features, self.adjacency_list = self._construct_molecular_graph(smiles_str)
+        self.mol, self.node_features, self.edge_features, self.adjacency_list = self._construct_molecular_graph(smiles_str)
         self.num_nodes = len(self.node_features)
 
         self.node_tensor, self.edge_tensor, self.adjacency_tensor = self._tensor_preprocess()
@@ -44,7 +44,7 @@ class DrugMolecule:
             adjacency_list.append((i, j))
             adjacency_list.append((j, i))
 
-        return node_features, edge_features, adjacency_list
+        return mol, node_features, edge_features, adjacency_list
 
     def _tensor_preprocess(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         processed_node_features = []

@@ -1,0 +1,186 @@
+import tkinter as tk
+from tkinter import ttk
+
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+from rdkit.Chem import AllChem
+from rdkit.Chem.Draw import rdMolDraw2D
+
+import pandas as pd
+import numpy as np
+import torch
+import io
+from PIL import Image
+
+from utils.dataset import DrugProteinDataset
+from utils.helper_functions import set_seeds
+from model import GraphAttentionNetwork
+
+
+class MoleculeViewer(tk.Tk):
+    def __init__(self, data_path: str):
+        super().__init__()
+
+        self.title("CD4C Molecule Viewer")
+        self.state("zoomed")
+        # Expand on the right and allow vertical expansion
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        data_df, protein_embeddings_df = load_data(data_path)
+        self.dataset = DrugProteinDataset(data_df, protein_embeddings_df)
+
+        # TODO - remove hard-coded .pth file and model params
+        self.model = GraphAttentionNetwork(
+            "cpu",
+            349,
+            1,
+            16,
+            96,
+            7,
+            6,
+            0.0,
+            96
+        ).to(torch.float32).to("cpu")
+        self.model.load_state_dict(torch.load("../models/model.pth", weights_only=False, map_location=torch.device('cpu')))
+        self.model.eval()
+
+        # Create a dictionary that maps the pair of ChEMBL IDs to the index of that entry.
+        self.pair_to_idx_mapping = {}
+        # Create a dictionary that maps the protein's ChEMBL ID to the drugs tested for interaction with that protein.
+        self.protein_to_drugs_mapping = {}
+
+        for idx in data_df.index:
+            protein_pchembl_id = data_df.at[idx, 'Target_ID']
+            drug_pchembl_id = data_df.at[idx, 'ChEMBL_ID']
+            self.pair_to_idx_mapping[(protein_pchembl_id, drug_pchembl_id)] = idx
+
+            if protein_pchembl_id in self.protein_to_drugs_mapping:
+                self.protein_to_drugs_mapping[protein_pchembl_id].append(drug_pchembl_id)
+            else:
+                self.protein_to_drugs_mapping[protein_pchembl_id] = [drug_pchembl_id]
+
+        self._create_settings_frame()
+
+        # Right Panel (Matplotlib Plot)
+        self.fig = Figure(figsize=(5, 4), dpi=100)
+        self.ax = self.fig.add_subplot()
+        self._update_display()
+
+        # Embed Matplotlib plot in Tkinter
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
+        self.canvas.get_tk_widget().grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+
+    def _create_settings_frame(self) -> None:
+        # Create a left panel that contains various settings that the user can modify.
+        settings_frame = tk.Frame(self)
+        settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsw")
+
+        tk.Label(settings_frame, text="Protein ChEMBL ID:").pack(pady=5)
+        self.protein_dropdown = ttk.Combobox(settings_frame, values=[""] + list(set(self.dataset.protein_ids)),
+                                      state="readonly")
+        self.protein_dropdown.pack(pady=5)
+        self.protein_dropdown.current(0)
+        self.protein_dropdown.bind("<<ComboboxSelected>>", self._update_drug_dropdown)
+
+        tk.Label(settings_frame, text="Drug ChEMBL ID:").pack(pady=5)
+        self.drug_dropdown = ttk.Combobox(settings_frame, state="readonly")
+        self.drug_dropdown.pack(pady=5)
+        self._update_drug_dropdown()
+
+        self.submit_button = tk.Button(settings_frame, text="Draw Molecule", command=self._update_display)
+        self.submit_button.pack(pady=10)  # Add some padding
+
+    def _update_drug_dropdown(self, event: tk.Event = None) -> None:
+        selected_protein = self.protein_dropdown.get()
+        if selected_protein == "":
+            self.drug_dropdown["values"] = [""]
+            self.drug_dropdown.current(0)
+        else:
+            new_drug_options = self.protein_to_drugs_mapping[selected_protein]
+            self.drug_dropdown["values"] = [""] + new_drug_options
+            if self.drug_dropdown.get() not in new_drug_options:
+                self.drug_dropdown.current(0)
+
+    def _update_display(self) -> None:
+        protein_chembl_id = self.protein_dropdown.get()
+        drug_chembl_id = self.drug_dropdown.get()
+
+        # Can only create a molecule graph if both the protein and the drug are specified.
+        if protein_chembl_id == "" or drug_chembl_id == "":
+            return
+
+        idx = self.pair_to_idx_mapping[(protein_chembl_id, drug_chembl_id)]
+        node_contributions = self._get_node_contributions(idx)
+        mol = self.dataset.drug_graphs[idx].mol
+
+        # Generate 2D coordinates for the molecule.
+        AllChem.Compute2DCoords(mol)
+
+        # Create a molecule drawing.
+        drawer = rdMolDraw2D.MolDraw2DCairo(1200, 1200)
+        drawer.DrawMolecule(mol)
+        drawer.FinishDrawing()
+
+        coords = []
+        for atom in range(mol.GetNumAtoms()):
+            coords.append(drawer.GetDrawCoords(atom))
+
+        # Convert the drawing to a PIL Image
+        png_data = drawer.GetDrawingText()
+        image = Image.open(io.BytesIO(png_data))
+
+        self.ax.imshow(image)
+        # Set axis limits and remove ticks
+        self.ax.set_xlim(0, 1200)
+        self.ax.set_ylim(1200, 0)  # Flip y-axis
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+
+        self.canvas.draw()
+
+
+    def _get_node_contributions(self, idx: int) -> list[float]:
+        node_features, edge_features, adjacency_matrix, pchembl_score = self.dataset[idx]
+        # Count the number of atoms in the drug molecule (excluding atoms that were added for padding).
+        num_real_nodes = (adjacency_matrix.sum(dim=1) == 0).sum().item()
+
+        # Add an extra dimension to allow for multiple samples in a batch.
+        node_features = node_features.unsqueeze(0).repeat(num_real_nodes, 1, 1)
+        edge_features = edge_features.repeat(num_real_nodes, 1, 1, 1)
+        adjacency_matrix = adjacency_matrix.repeat(num_real_nodes, 1, 1)
+
+        for i in range(num_real_nodes):
+            # Mask the node features for the ith node.
+            node_features[i, i, :] = 0.0
+            # Mask the edge features for edges connecting to the ith node.
+            edge_features[i, i, :, :] = 0.0
+            edge_features[i, :, i, :] = 0.0
+            # Mask the edges connecting to the ith node.
+            adjacency_matrix[i, i, :] = 0.0
+            adjacency_matrix[i, :, i] = 0.0
+
+        preds = self.model(node_features, edge_features, adjacency_matrix).squeeze(-1).tolist()
+        avg_pred = sum(preds) / num_real_nodes
+        node_contributions = []
+        for x in preds:
+            # The contribution of a node is given by the change in the pChEMBL prediction when that
+            # node is masked (if the prediction drops when the node is masked, then the node has a
+            # positive contribution).
+            node_contributions.append(avg_pred - x)
+
+        return node_contributions
+
+
+def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    data_df = pd.read_csv(f'{data_path}/filtered_cancer_all.csv')
+    protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
+    return data_df, protein_embeddings_df
+
+
+if __name__ == '__main__':
+    set_seeds()
+    viewer = MoleculeViewer('../data')
+    viewer.mainloop()
