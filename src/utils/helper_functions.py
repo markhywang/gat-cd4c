@@ -86,43 +86,13 @@ def plot_predictions(
 
 
 def mse_func(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
-    """Calculates Mean Squared Error between predictions and true values.
-
-    Args:
-        y_pred (torch.Tensor): Predicted continuous values
-        y_true (torch.Tensor): True continuous values
-
-    Returns:
-        float: Mean Squared Error value
-    """
-    # Ensure inputs have the same shape
-    assert y_pred.shape == y_true.shape, "Prediction and true tensors must have same shape"
-    
-    # Calculate squared differences and take mean
     squared_diff = (y_pred - y_true) ** 2
-    mse = torch.mean(squared_diff)
-    
-    return float(mse.item())
+    return float(torch.mean(squared_diff).item())
 
 
 def mae_func(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
-    """Calculates Mean Absolute Error between predictions and true values.
-
-    Args:
-        y_pred (torch.Tensor): Predicted continuous values
-        y_true (torch.Tensor): True continuous values
-
-    Returns:
-        float: Mean Absolute Error value
-    """
-    # Ensure inputs have the same shape
-    assert y_pred.shape == y_true.shape, "Prediction and true tensors must have same shape"
-    
-    # Calculate absolute differences and take mean
     abs_diff = torch.abs(y_pred - y_true)
-    mae = torch.mean(abs_diff)
-    
-    return float(mae.item())
+    return float(torch.mean(abs_diff).item())
 
 
 # Calculate number of accurate predictions (given regression outputs)
@@ -137,11 +107,7 @@ def accuracy_func(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float) 
     Returns:
         [int]: Number of accurate predictions, e.g. 783
     """
-    above_threshold = (y_pred >= threshold) & (y_true >= threshold)
-    below_threshold = (y_pred < threshold) & (y_true < threshold)
-    num_above_threshold = int(above_threshold.sum().item())
-    num_below_threshold = int(below_threshold.sum().item())
-    return num_above_threshold + num_below_threshold
+    return (abs(y_true - y_pred) < threshold).sum()
 
 
 def print_train_time(start, end, device=None):

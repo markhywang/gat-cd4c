@@ -10,8 +10,10 @@ from rdkit.Chem import rdFingerprintGenerator
 from rdkit import DataStructs
 
 # Define accuracy function (mimicking the GAT model's approach)
-def compute_accuracy(preds, true_labels, threshold=1.0):
-    correct = (abs(true_labels - preds) < 1).sum()
+def compute_accuracy(preds, true_labels, threshold=7.0):
+    preds_binary = (preds >= threshold).astype(int)
+    true_binary = (true_labels >= threshold).astype(int)
+    correct = (preds_binary == true_binary).sum()
     return correct / len(preds)
 
 # Load data (adapted from provided load_data function)
