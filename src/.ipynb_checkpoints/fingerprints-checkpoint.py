@@ -10,40 +10,36 @@ from rdkit.Chem import rdFingerprintGenerator
 from rdkit import DataStructs
 
 # Define accuracy function (mimicking the GAT model's approach)
-def compute_accuracy(preds, true_labels, threshold=7.0):
-    preds_binary = (preds >= threshold).astype(int)
-    true_binary = (true_labels >= threshold).astype(int)
-    correct = (preds_binary == true_binary).sum()
+def compute_accuracy(preds, true_labels, threshold=1.0):
+    # Use the threshold parameter instead of a fixed value of 1
+    correct = (abs(true_labels - preds) < threshold).sum()
     return correct / len(preds)
 
-# Load data (adapted from provided load_data function)
+# Load data
 def load_data(data_path, seed=42, frac_train=0.8, frac_val=0.1, frac_test=0.1, use_small=False):
     dataset_file = 'filtered_cancer_small.csv' if use_small else 'filtered_cancer_all.csv'
     data_df = pd.read_csv(f'{data_path}/{dataset_file}')
     protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
     
-    # Create binary label based on the threshold 7.0 (using the pChEMBL_Value column)
-    data_df['binary_label'] = (data_df['pChEMBL_Value'] >= 7).astype(int)
-    # Construct a stratification column by combining Target_ID and binary label
-    data_df['stratify_col'] = data_df['Target_ID'].astype(str) + '_' + data_df['binary_label'].astype(str)
+    # Create label based on the pChEMBL_Value column
+    data_df['label'] = data_df['pChEMBL_Value'].astype(float)
     
+    # Split
     train_df, temp_df = train_test_split(
         data_df, 
         test_size=frac_val + frac_test, 
-        stratify=data_df['stratify_col'], 
         random_state=seed
     )
     val_df, test_df = train_test_split(
         temp_df, 
         test_size=frac_test/(frac_val + frac_test), 
-        stratify=temp_df['stratify_col'], 
         random_state=seed
     )
     
-    # Drop the extra columns used for stratification
-    train_df = train_df.drop(columns=['stratify_col', 'binary_label'])
-    val_df = val_df.drop(columns=['stratify_col', 'binary_label'])
-    test_df = test_df.drop(columns=['stratify_col', 'binary_label'])
+    # Drop the label column if no longer needed
+    train_df = train_df.drop(columns=['label'])
+    val_df = val_df.drop(columns=['label'])
+    test_df = test_df.drop(columns=['label'])
     
     return train_df, val_df, test_df, protein_embeddings_df
 
@@ -101,9 +97,9 @@ val_r2 = r2_score(val_y, val_preds)
 test_r2 = r2_score(test_y, test_preds)
 
 # Compute accuracy (threshold-based)
-train_acc = compute_accuracy(train_preds, train_y, threshold=7.0)
-val_acc = compute_accuracy(val_preds, val_y, threshold=7.0)
-test_acc = compute_accuracy(test_preds, test_y, threshold=7.0)
+train_acc = compute_accuracy(train_preds, train_y, threshold=1.0)
+val_acc = compute_accuracy(val_preds, val_y, threshold=1.0)
+test_acc = compute_accuracy(test_preds, test_y, threshold=1.0)
 
 # Print results
 print("XGBoost Model Performance:")
