@@ -48,6 +48,7 @@ def train_model(args: argparse.Namespace, m_device = device) -> None:
     validation_loader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=False)
 
     loss_func = nn.SmoothL1Loss(beta=args.huber_beta)  # Initialize the Huber loss function.
+    # loss_func = nn.MSELoss() # Trying MSE for funsies
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,

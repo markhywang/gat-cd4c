@@ -18,18 +18,18 @@ device = torch.device("cpu")
 
 print(f"Using device: {device}")
 
-def train_model(args: argparse.Namespace, m_device) -> None:
+def train_model(args: argparse.Namespace, m_device = device) -> None:
     # TODO - remove hard-coded specifications for the model
     # Set the same seed every time for deterministic behaviour.
     set_seeds()
 
     # Set device to device
-    global device 
+    global device
     device = m_device
 
     model = GraphAttentionNetwork(
         device,
-        333,
+        349,
         1,
         16,
         args.hidden_size,
@@ -40,7 +40,7 @@ def train_model(args: argparse.Namespace, m_device) -> None:
     ).to(torch.float32).to(device)
 
     print(f'Model parameters: {count_model_params(model)}')
-    
+
     train_dataset, validation_dataset, test_dataset = load_data(args.data_path, args.seed, args.frac_train,
                                                                 args.frac_validation, args.frac_test,
                                                                 args.use_small_dataset)
@@ -48,6 +48,7 @@ def train_model(args: argparse.Namespace, m_device) -> None:
     validation_loader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=False)
 
     loss_func = nn.SmoothL1Loss(beta=args.huber_beta)  # Initialize the Huber loss function.
+    # loss_func = nn.MSELoss() # Trying MSE for funsies
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
@@ -121,7 +122,7 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
         cum_training_acc_preds += accuracy_func(preds, pchembl_score, threshold=7.0)
 
         optimizer.zero_grad()
-        loss.backward()      
+        loss.backward()
         optimizer.step()
 
     avg_loss = cum_training_loss / cum_training_samples
@@ -212,6 +213,7 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Maximum number of epochs to run training")
     parser.add_argument("--seed", type=int, required=False, default=42,
                         help="The seed used to control any stochastic operations")
+
     # Data parameters
     parser.add_argument("--data_path", type=str, required=False, default='../data',
                         help="Path to the folder with the data")
@@ -221,15 +223,18 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Fraction of data to use for validation dataset")
     parser.add_argument("--frac_test", type=float, required=False, default=0.15,
                         help="Fraction of data to use for test dataset")
+
     # Loss parameters
     parser.add_argument("--huber_beta", type=float, required=False, default=1.0,
                         help="Beta parameter for Huber loss function")
 
     # Optimizer parameters
-    parser.add_argument("--weight_decay", type=float, required=False, default=1e-4,
+    parser.add_argument("--weight_decay", type=float, required=False, default=1e-3,
                         help="Weight decay for optimizer")
-    parser.add_argument("--lr", type=float, required=False, default=3e-3,
+    parser.add_argument("--lr", type=float, required=False, default=3e-4,
                         help="Learning rate")
+    parser.add_argument("--momentum", type=float, required=False, default=0.9,
+                        help="Momentum for appropriate optimizers (e.g. SGD)")
     parser.add_argument("--scheduler_patience", type=int, required=False, default=10,
                         help="Number of epochs before reducing the learning rate")
     parser.add_argument("--scheduler_factor", type=float, required=False, default=0.5,
@@ -246,7 +251,7 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Dropout percentage for graph attention layers")
     parser.add_argument("--leaky_relu_slope", type=float, required=False, default=0.2,
                         help="The slope for the Leaky ReLU activation function")
-    parser.add_argument("--pooling_dim", type=float, required=False, default=128,
+    parser.add_argument("--pooling_dim", type=int, required=False, default=128,
                         help="Pooling dimension")
 
     return parser
