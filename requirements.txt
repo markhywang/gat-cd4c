@@ -13,3 +13,4 @@ tensorboard
 jupyterlab
 notebook
 regex
+xgboost

@@ -48,6 +48,7 @@ def train_model(args: argparse.Namespace, m_device = device) -> None:
     validation_loader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=False)
 
     loss_func = nn.SmoothL1Loss(beta=args.huber_beta)  # Initialize the Huber loss function.
+    # loss_func = nn.MSELoss() # Trying MSE for funsies
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
@@ -62,49 +63,63 @@ def train_model(args: argparse.Namespace, m_device = device) -> None:
     best_validation_loss = float('inf')
     # Initialize a counter that tracks the number of consecutive epochs without an improvement in validation loss.
     no_validation_loss_improvement = 0
-    metrics_df = pd.DataFrame(columns=['train_loss', 'validation_loss'], index=range(args.max_epochs))
+    metrics_df = pd.DataFrame(columns=['train_loss', 'validation_loss', 
+                                     'train_acc', 'validation_acc',
+                                     'train_mse', 'validation_mse',
+                                     'train_mae', 'validation_mae'], 
+                            index=range(args.max_epochs))
 
     for epoch in range(args.max_epochs):
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.max_epochs}", leave=True)
-        avg_train_loss, avg_train_acc = run_training_epoch(progress_bar, optimizer, model, loss_func)
-        avg_validation_loss, avg_validation_acc = get_validation_metrics(validation_loader, model, loss_func)
+        avg_train_metrics = run_training_epoch(progress_bar, optimizer, model, loss_func)
+        avg_val_metrics = get_validation_metrics(validation_loader, model, loss_func)
 
-        # Step the learning rate scheduler based on mean training loss
+        # Unpack all metrics
+        avg_train_loss, avg_train_acc, avg_train_mse, avg_train_mae = avg_train_metrics
+        avg_val_loss, avg_val_acc, avg_val_mse, avg_val_mae = avg_val_metrics
+
         lr_scheduler.step(avg_train_loss)
 
-        # Save the training and validation metrics in a dataframe.
+        # Store all metrics
         metrics_df.at[epoch, 'train_loss'] = avg_train_loss
-        metrics_df.at[epoch, 'validation_loss'] = avg_validation_loss
+        metrics_df.at[epoch, 'validation_loss'] = avg_val_loss
         metrics_df.at[epoch, 'train_acc'] = avg_train_acc
-        metrics_df.at[epoch, 'validation_acc'] = avg_validation_acc
+        metrics_df.at[epoch, 'validation_acc'] = avg_val_acc
+        metrics_df.at[epoch, 'train_mse'] = avg_train_mse
+        metrics_df.at[epoch, 'validation_mse'] = avg_val_mse
+        metrics_df.at[epoch, 'train_mae'] = avg_train_mae
+        metrics_df.at[epoch, 'validation_mae'] = avg_val_mae
 
-        print(f"Epoch {epoch + 1}/{args.max_epochs}: Train Loss = {avg_train_loss:.5f}, "
-              f"Validation Loss = {avg_validation_loss:.5f}, Train Accuracy = {avg_train_acc:.5f}, "
-              f"Validation Accuracy = {avg_validation_acc:.5f}")
+        print(f"Epoch {epoch + 1}/{args.max_epochs}: \n"
+              f"Train Loss = {avg_train_loss:.5f}, "
+              f"Train MSE = {avg_train_mse:.5f}, "
+              f"Train MAE = {avg_train_mae:.5f}, "
+              f"Train Acc = {avg_train_acc:.5f}\n"
+        
+              f"Val Loss = {avg_val_loss:.5f}, "
+              f"Val MSE = {avg_val_mse:.5f}, "
+              f"Val MAE = {avg_val_mae:.5f}, "
+              f"Val Acc = {avg_val_acc:.5f}")
 
-        if avg_validation_loss < best_validation_loss:
-            # Update the best validation loss seen so far.
-            best_validation_loss = avg_validation_loss
+        if avg_val_loss < best_validation_loss:
+            best_validation_loss = avg_val_loss
             no_validation_loss_improvement = 0
-            # Save the weights of the model which gives the lowest validation loss so far.
             torch.save(model.state_dict(), '../models/model.pth')
         else:
             no_validation_loss_improvement += 1
-            # If the validation hasn't improved for a certain number of epochs, end training.
             if no_validation_loss_improvement == args.stoppage_epochs:
                 break
 
     plot_loss_curves(metrics_df)
 
-
 def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn.Module,
-                       loss_func: nn.Module) -> tuple[float, float]:
-    # Ensure model is in training mode.
+                      loss_func: nn.Module) -> tuple[float, float, float, float]:
     model.train()
-
     cum_training_samples = 0
     cum_training_loss = 0
     cum_training_acc_preds = 0
+    cum_training_mse = 0
+    cum_training_mae = 0
 
     for batch_data in progress_bar:
         node_features, edge_features, adjacency_matrix, pchembl_score = [
@@ -116,9 +131,9 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
 
         cum_training_samples += preds.shape[0]
         cum_training_loss += loss.item() * preds.shape[0]
-        # Threshold of 7.0 is chosen based on the CD4C paper's claim that a pChEMBL score >= 7.0 signifies a
-        # significant drug-protein interaction.
-        cum_training_acc_preds += accuracy_func(preds, pchembl_score, threshold=7.0)
+        cum_training_acc_preds += accuracy_func(preds, pchembl_score, threshold=1.0)
+        cum_training_mse += mse_func(preds, pchembl_score) * preds.shape[0]
+        cum_training_mae += mae_func(preds, pchembl_score) * preds.shape[0]
 
         optimizer.zero_grad()
         loss.backward()
@@ -126,17 +141,18 @@ def run_training_epoch(progress_bar: tqdm, optimizer: optim.Optimizer, model: nn
 
     avg_loss = cum_training_loss / cum_training_samples
     avg_acc = cum_training_acc_preds / cum_training_samples
-    return avg_loss, avg_acc
-
+    avg_mse = cum_training_mse / cum_training_samples
+    avg_mae = cum_training_mae / cum_training_samples
+    return avg_loss, avg_acc, avg_mse, avg_mae
 
 def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss_func: nn.Module) \
-        -> tuple[float, float]:
-    # Ensure model is in evaluation mode.
+        -> tuple[float, float, float, float]:
     model.eval()
-
     cum_validation_samples = 0
     cum_validation_loss = 0
     cum_validation_acc_preds = 0
+    cum_validation_mse = 0
+    cum_validation_mae = 0
 
     for batch in validation_loader:
         node_features, edge_features, adjacency_matrix, pchembl_scores = [
@@ -144,20 +160,23 @@ def get_validation_metrics(validation_loader: DataLoader, model: nn.Module, loss
         ]
         preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
         loss = loss_func(preds, pchembl_scores).item()
-        # Threshold of 7.0 is chosen based on the CD4C paper's claim that a pChEMBL score >= 7.0 signifies a
-        # significant drug-protein interaction.
-        acc = accuracy_func(preds, pchembl_scores, threshold=7.0)
+        acc = accuracy_func(preds, pchembl_scores, threshold=1.0)
+        mse = mse_func(preds, pchembl_scores)
+        mae = mae_func(preds, pchembl_scores)
 
         cum_validation_samples += preds.shape[0]
         cum_validation_loss += loss * preds.shape[0]
         cum_validation_acc_preds += acc
+        cum_validation_mse += mse * preds.shape[0]
+        cum_validation_mae += mae * preds.shape[0]
 
-    # TODO - only plot preds vs labels for the final training epoch
-    # plot_preds_vs_labels(preds, pchembl_scores)
+    avg_loss = cum_validation_loss / cum_validation_samples
+    avg_acc = cum_validation_acc_preds / cum_validation_samples
+    avg_mse = cum_validation_mse / cum_validation_samples
+    avg_mae = cum_validation_mae / cum_validation_samples
+    return avg_loss, avg_acc, avg_mse, avg_mae
 
-    return cum_validation_loss / cum_validation_samples, cum_validation_acc_preds / cum_validation_samples
-
-
+# Rest of the code (load_data and get_parser) remains unchanged
 def load_data(data_path: str, seed: int, frac_train: float, frac_validation: float,
               frac_test: float, use_small_dataset: bool) -> tuple[Dataset, Dataset, Dataset]:
     assert math.isclose(frac_train + frac_validation + frac_test, 1), \
@@ -168,25 +187,16 @@ def load_data(data_path: str, seed: int, frac_train: float, frac_validation: flo
     data_df = pd.read_csv(f'{data_path}/{dataset_file}')
     protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
 
-    # Create a column that combines the protein ID and whether there was a significant drug-protein
-    # interaction. This column will be used to split the data to ensure that each dataset has an
-    # appropriate balance of proteins and interaction types.
     data_df['stratify_col'] = data_df['Target_ID'] + '_' + data_df['label'].astype(str)
-
-    # Split part of the data into the training dataset (maintaining an equal split of proteins and interactions types).
     train_df, remaining_df = train_test_split(data_df,
                                               test_size=frac_validation + frac_test,
                                               stratify=data_df['stratify_col'],
                                               random_state=seed)
-
-    # Split the remaining data to get the validation and test datasets (maintaining an equal split of proteins and
-    # interaction types).
     validation_df, test_df = train_test_split(remaining_df,
                                               test_size=frac_test / (frac_validation + frac_test),
                                               stratify=remaining_df['stratify_col'],
                                               random_state=seed)
 
-    # Remove the stratify column from all the datasets.
     train_df = train_df.drop(columns='stratify_col')
     validation_df = validation_df.drop(columns='stratify_col')
     test_df = test_df.drop(columns='stratify_col')

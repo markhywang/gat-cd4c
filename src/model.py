@@ -31,7 +31,7 @@ class GraphAttentionNetwork(nn.Module):
         # [B, N, F_out] -> [B, 1]
         pchembl_scores = self.global_attn_pooling(updated_node_features)
 
-        # Normalize pChEMBL scores into the range (0, 14) using sigmoid function
+        # Normalize pChEMBL scores into the range (0, 14) using hyperbolic tangent
         pchembl_scores = 14 * torch.sigmoid(pchembl_scores)
 
         # Final shape: [B, 1]
@@ -47,7 +47,7 @@ class GlobalAttentionPooling(nn.Module):
 
         self.final_projection = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(hidden_dim, out_features)
         )
 
@@ -76,29 +76,42 @@ class GraphAttentionLayer(nn.Module):
     def __init__(self, device, in_features: int, out_features: int,
                  num_edge_features: int, num_attn_heads: int = 1, dropout: int = 0.2, use_leaky_relu: bool = True) -> None:
         super().__init__()
-
         self.device = device
-        self.projection = nn.Linear(in_features, out_features)
+
+        self.node_projection = nn.Linear(in_features, out_features)
         self.layer_norm_1 = nn.LayerNorm(in_features)
+
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(num_edge_features, 2 * num_edge_features),
+            nn.GELU(),
+            nn.Linear(2 * num_edge_features, num_edge_features)
+        )
+        self.layer_norm_2 = nn.LayerNorm(num_edge_features)
+        self.edge_gate = nn.Sequential(
+            nn.Linear(num_edge_features, 1),
+            nn.Sigmoid()
+        )
 
         self.use_leaky_relu = use_leaky_relu
         if use_leaky_relu:
             self.leaky_relu = nn.LeakyReLU(0.2)
-            self.layer_norm_2 = nn.LayerNorm(out_features)
+            self.layer_norm_final = nn.LayerNorm(out_features)
 
         self.num_attn_heads = num_attn_heads
         self.head_size = out_features // num_attn_heads
         self.attn_matrix = nn.Parameter(torch.empty((num_attn_heads, 2 * self.head_size + num_edge_features)))
         self.attn_leaky_relu = nn.LeakyReLU(0.2)
 
-        # Final MLP layer because apparently that's what every person does in papers
-        self.out_projection = nn.Linear(out_features, out_features)
-
+        # Final MLP layer
+        self.out_node_projection = nn.Linear(out_features, out_features)
         self.dropout = nn.Dropout(dropout)
 
-        # Initialize the projection weights and attention matrix using a Xavier uniform distribution.
-        nn.init.xavier_uniform_(self.projection.weight.data, gain=math.sqrt(2))
+        # Initialize necessary parameters using a Xavier uniform distribution.
+        nn.init.xavier_uniform_(self.node_projection.weight.data, gain=math.sqrt(2))
         nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
+        nn.init.xavier_uniform_(self.edge_mlp[0].weight, gain=math.sqrt(2))
+        nn.init.xavier_uniform_(self.edge_mlp[2].weight, gain=math.sqrt(2))
+        nn.init.xavier_uniform_(self.edge_gate[0].weight, gain=math.sqrt(2))
 
         # Add residual projection if in_features doesn't match out_features.
         if in_features != out_features:
@@ -112,37 +125,44 @@ class GraphAttentionLayer(nn.Module):
         node_features, edge_features, adjacency_matrix = [t.to(self.device) for t in x]
         batch_size, num_nodes, num_node_features = node_features.shape
 
-        # Save residual for later addition.
-        residual = node_features
+        # Save node and edge residual for later addition.
+        node_residual = node_features
+        edge_residual = edge_features
 
         # [B, N, F_in] -> [B, N, F_out]
-        new_node_features = self.projection(self.layer_norm_1(node_features))
+        new_node_features = self.node_projection(self.layer_norm_1(node_features))
+
+        # [B, N, N, F_edge] -> [B, N, N, F_edge]
+        edge_normalized = self.layer_norm_2(edge_features)
+        edge_update = self.edge_mlp(edge_normalized)
+        gate = self.edge_gate(edge_residual)  # Gate uses original features
+        new_edge_features = gate * edge_update + (1 - gate) * edge_residual
 
         # Split the node_features for every attention head.
         # [B, N, F_out] -> [B, N, num_heads, F_out // num_heads]
         new_node_features = new_node_features.view(batch_size, num_nodes, self.num_attn_heads, -1)
 
         # attn_coeffs shape: [B, N, N, num_heads]
-        attn_coeffs = self._compute_attn_coeffs(new_node_features, edge_features, adjacency_matrix, num_nodes)
+        attn_coeffs = self._compute_attn_coeffs(new_node_features, new_edge_features, adjacency_matrix, num_nodes)
 
         # [B, N, num_heads, F_out // num_attn_heads] -> [B, N, F_out]
         new_node_features = self._execute_message_passing(new_node_features, attn_coeffs, batch_size, num_nodes)
 
         # Do final projection and dropout
         # The shape remains [B, N, F_out]
-        new_node_features = self.out_projection(new_node_features)
+        new_node_features = self.out_node_projection(new_node_features)
         new_node_features = self.dropout(new_node_features)
 
         # Apply residual connection.
         # If dimensions differ, project the residual to the correct dimension.
-        residual = self.residual_proj(residual)
-        new_node_features = new_node_features + residual
+        node_residual = self.residual_proj(node_residual)
+        new_node_features = new_node_features + node_residual
 
         # Optionally apply layer normalization and activation.
         if self.use_leaky_relu:
-            new_node_features = self.leaky_relu(self.layer_norm_2(new_node_features))
+            new_node_features = self.leaky_relu(self.layer_norm_final(new_node_features))
 
-        return new_node_features, edge_features, adjacency_matrix
+        return new_node_features, new_edge_features, adjacency_matrix
 
     def _compute_attn_coeffs(self, node_features: torch.Tensor, edge_features: torch.Tensor,
                              adjacency_matrix: torch.Tensor, num_nodes: int) -> torch.Tensor:
