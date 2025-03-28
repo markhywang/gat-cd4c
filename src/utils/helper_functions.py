@@ -126,18 +126,23 @@ def print_train_time(start, end, device=None):
     return total_time
 
 
-# Plot loss curves of a model
+def to_cpu_scalar(x):
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu().item()
+    return x
+
+
 def plot_loss_curves(results):
     """Plots training curves of a results dictionary.
 
     Args:
         results (pd.DataFrame): dataframe containing train_loss, train_acc, validation_loss, and validation_acc
     """
-    loss = results["train_loss"].tolist()
-    validation_loss = results["validation_loss"].tolist()
+    loss = [to_cpu_scalar(x) for x in results["train_loss"].tolist()]
+    validation_loss = [to_cpu_scalar(x) for x in results["validation_loss"].tolist()]
 
-    accuracy = results["train_acc"].tolist()
-    validation_accuracy = results["validation_acc"].tolist()
+    accuracy = [to_cpu_scalar(x) for x in results["train_acc"].tolist()]
+    validation_accuracy = [to_cpu_scalar(x) for x in results["validation_acc"].tolist()]
 
     epochs = range(results.shape[0])
 
