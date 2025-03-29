@@ -36,6 +36,7 @@ def train_model(args: argparse.Namespace, m_device = device) -> None:
         args.num_layers,
         args.num_attn_heads,
         args.dropout,
+        args.pooling_dropout,
         args.pooling_dim
     ).to(torch.float32).to(device)
 
