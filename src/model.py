@@ -6,19 +6,25 @@ import math
 
 class GraphAttentionNetwork(nn.Module):
     def __init__(self, device, in_features: int, out_features: int, num_edge_features: int, hidden_size: int,
-                 num_layers: int, num_attn_heads: int, dropout: float, pooling_dim: int) -> None:
+                 num_layers: int, num_attn_heads: int, dropout: float, pooling_dropout: float, pooling_dim: int) -> None:
         super().__init__()
 
         if num_layers == 1:
-            layers = [GraphAttentionLayer(device, in_features, out_features, num_edge_features, dropout=0.0, use_leaky_relu=False)]
+            layers = [GraphAttentionLayer(device, in_features, out_features, 
+                                          num_edge_features, dropout, use_leaky_relu=False)]
         else:
-            layers = [GraphAttentionLayer(device, in_features, hidden_size, num_edge_features, num_attn_heads, dropout=dropout)]
+            layers = [GraphAttentionLayer(device, in_features, hidden_size, 
+                                          num_edge_features, num_attn_heads, dropout=dropout)]
             for i in range(num_layers - 2):
-                layers.append(GraphAttentionLayer(device, hidden_size, hidden_size, num_edge_features, num_attn_heads, dropout=dropout))
-            layers.append(GraphAttentionLayer(device, hidden_size, out_features, num_edge_features, dropout=0.0, use_leaky_relu=False))
+                layers.append(GraphAttentionLayer(device, hidden_size, hidden_size, 
+                                                  num_edge_features, num_attn_heads, dropout=dropout))
+
+            # This is set to one for reasons beyond my understanding
+            layers.append(GraphAttentionLayer(device, hidden_size, out_features, 
+                                              num_edge_features, num_attn_heads=1, dropout=dropout, use_leaky_relu=False))
 
         self.gat_layers = nn.Sequential(*layers)
-        self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, pooling_dim, dropout=0.0)
+        self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, pooling_dim, dropout=pooling_dropout)
 
     def forward(self, node_features, edge_features, adjacency_matrix) -> torch.Tensor:
         # Initial node feature shape: [B, N, F_in]
@@ -31,8 +37,8 @@ class GraphAttentionNetwork(nn.Module):
         # [B, N, F_out] -> [B, 1]
         pchembl_scores = self.global_attn_pooling(updated_node_features)
 
-        # Normalize pChEMBL scores into the range (0, 14) using hyperbolic tangent
-        pchembl_scores = 7 * (torch.tanh(pchembl_scores) + 1)
+        # Normalize pChEMBL scores into the range (0, 14) using sigmoid
+        pchembl_scores = 14 * torch.sigmoid(pchembl_scores)
 
         # Final shape: [B, 1]
         return pchembl_scores
@@ -47,6 +53,7 @@ class GlobalAttentionPooling(nn.Module):
 
         self.final_projection = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
+            nn.LayerNorm(hidden_dim),  # Added normalization
             nn.GELU(),
             nn.Linear(hidden_dim, out_features)
         )
@@ -95,7 +102,6 @@ class GraphAttentionLayer(nn.Module):
         self.use_leaky_relu = use_leaky_relu
         if use_leaky_relu:
             self.leaky_relu = nn.LeakyReLU(0.2)
-            self.layer_norm_final = nn.LayerNorm(out_features)
 
         self.num_attn_heads = num_attn_heads
         self.head_size = out_features // num_attn_heads
@@ -158,9 +164,9 @@ class GraphAttentionLayer(nn.Module):
         node_residual = self.residual_proj(node_residual)
         new_node_features = new_node_features + node_residual
 
-        # Optionally apply layer normalization and activation.
+        # Optionally apply activation.
         if self.use_leaky_relu:
-            new_node_features = self.leaky_relu(self.layer_norm_final(new_node_features))
+            new_node_features = self.leaky_relu(new_node_features)
 
         return new_node_features, new_edge_features, adjacency_matrix
 
