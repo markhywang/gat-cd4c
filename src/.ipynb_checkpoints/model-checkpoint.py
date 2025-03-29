@@ -23,9 +23,7 @@ class GraphAttentionNetwork(nn.Module):
             layers.append(GraphAttentionLayer(device, hidden_size, out_features, 
                                               num_edge_features, num_attn_heads=1, dropout=dropout, use_leaky_relu=False))
 
-
         self.gat_layers = nn.Sequential(*layers)
-        self.post_gat_norm = nn.LayerNorm(out_features)
         self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, pooling_dim, dropout=pooling_dropout)
 
     def forward(self, node_features, edge_features, adjacency_matrix) -> torch.Tensor:
@@ -34,10 +32,6 @@ class GraphAttentionNetwork(nn.Module):
 
         # [B, N, F_in] -> [B, N, F_out]
         updated_node_features, _, _ = self.gat_layers(input_tuple)
-
-        # Added normalization here
-        normalized_features = self.post_gat_norm(updated_node_features)
-        pchembl_scores = self.global_attn_pooling(normalized_features)
 
         # Perform global attention pooling for final learning process
         # [B, N, F_out] -> [B, 1]
@@ -108,7 +102,6 @@ class GraphAttentionLayer(nn.Module):
         self.use_leaky_relu = use_leaky_relu
         if use_leaky_relu:
             self.leaky_relu = nn.LeakyReLU(0.2)
-            self.layer_norm_final = nn.LayerNorm(out_features)
 
         self.num_attn_heads = num_attn_heads
         self.head_size = out_features // num_attn_heads
@@ -171,9 +164,9 @@ class GraphAttentionLayer(nn.Module):
         node_residual = self.residual_proj(node_residual)
         new_node_features = new_node_features + node_residual
 
-        # Optionally apply layer normalization and activation.
+        # Optionally apply activation.
         if self.use_leaky_relu:
-            new_node_features = self.leaky_relu(self.layer_norm_final(new_node_features))
+            new_node_features = self.leaky_relu(new_node_features)
 
         return new_node_features, new_edge_features, adjacency_matrix
 
