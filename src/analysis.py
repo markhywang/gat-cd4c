@@ -27,8 +27,12 @@ class MoleculeViewer(tk.Tk):
 
         self.title("CD4C Molecule Viewer")
         self.state("zoomed")
-        # Expand on the right and allow vertical expansion
+        # Use a white background.
+        self.configure(bg="white")
+
+        # Make the 2nd and 3rd column.
         self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(2, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
         data_df, protein_embeddings_df = load_data(data_path)
@@ -65,39 +69,88 @@ class MoleculeViewer(tk.Tk):
                 self.protein_to_drugs_mapping[protein_pchembl_id] = [drug_pchembl_id]
 
         self._create_settings_frame()
+        # Create a figure to show the drug molecule.
+        self.fig, self.ax, self.canvas = self._init_canvas(column=1)
+        self._create_info_frame()
 
-        # Right Panel (Matplotlib Plot)
-        self.fig = Figure()
-        self.ax = self.fig.add_subplot()
-        self.ax.set_xlim(0, 1200)
-        self.ax.set_ylim(1200, 0)  # Flip y-axis
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
+    def _init_canvas(self, column: int, size: int = 1200, **kwargs) -> tuple[Figure, plt.Axes, FigureCanvasTkAgg]:
+        fig = Figure()
+        ax = fig.add_subplot()
+        ax.set_xlim(0, size)
+        ax.set_ylim(size, 0)  # Flip y-axis
+        ax.set_xticks([])
+        ax.set_yticks([])
+        # Add a placeholder white image.
+        ax.imshow(Image.new('RGB', (size, size), (255, 255, 255)))
 
-        # Embed Matplotlib plot in Tkinter
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
-        self.canvas.get_tk_widget().grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        canvas = FigureCanvasTkAgg(fig, master=self)
+        canvas.get_tk_widget().grid(row=0, column=column, sticky="nsew", padx=10, pady=10, **kwargs)
+
+        return fig, ax, canvas
 
     def _create_settings_frame(self) -> None:
-        # Create a left panel that contains various settings that the user can modify.
-        settings_frame = tk.Frame(self)
-        settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsw")
+        # Use a larger font.
+        font = ("Helvetica", 12)
+        x_pad = 30
 
-        tk.Label(settings_frame, text="Protein ChEMBL ID:").pack(pady=5)
+        # Create a left panel that contains various settings that the user can modify.
+        self.settings_frame = tk.Frame(self)
+        self.settings_frame.grid(row=0, column=0, padx=10, sticky="nsw")
+
+        # Add a spacer at the top.
+        tk.Label(self.settings_frame, text="", height=2).pack()
+
+        tk.Label(self.settings_frame, text="Protein ChEMBL ID:", font=font).pack(padx=x_pad)
         self.protein_dropdown = ttk.Combobox(
-            settings_frame, values=[""] + list(dict.fromkeys(self.dataset.protein_ids)),
-            state="readonly")
-        self.protein_dropdown.pack(pady=5)
+            self.settings_frame, values=[""] + list(dict.fromkeys(self.dataset.protein_ids)),
+            state="readonly", font=font)
+        self.protein_dropdown.pack(pady=(5, 20), padx=x_pad)
         self.protein_dropdown.current(0)
         self.protein_dropdown.bind("<<ComboboxSelected>>", self._update_drug_dropdown)
 
-        tk.Label(settings_frame, text="Drug ChEMBL ID:").pack(pady=5)
-        self.drug_dropdown = ttk.Combobox(settings_frame, state="readonly")
-        self.drug_dropdown.pack(pady=5)
+        tk.Label(self.settings_frame, text="Drug ChEMBL ID:", font=font).pack(padx=x_pad)
+        self.drug_dropdown = ttk.Combobox(self.settings_frame, state="readonly", font=font)
+        self.drug_dropdown.pack(pady=(5, 20), padx=x_pad)
         self._update_drug_dropdown()
 
-        self.submit_button = tk.Button(settings_frame, text="Draw Molecule", command=self._update_display)
-        self.submit_button.pack(pady=10)  # Add some padding
+        self.submit_button = tk.Button(self.settings_frame, text="Draw Molecule", font=font,
+                                       command=self._update_display)
+        self.submit_button.pack(padx=x_pad)
+
+    def _create_info_frame(self) -> None:
+        self.info_frame = tk.Frame(self, width=400, padx=10, pady=10)
+        self.info_frame.grid_propagate(False)
+        self.info_frame.grid(row=0, column=2, sticky="ns", padx=50, pady=100)
+
+        self._update_info_frame("", "", "")
+
+    def _update_info_frame(self, actual_pchembl_str: str, pred_pchembl_str: str, smiles_str: str) -> None:
+        for widget in self.info_frame.winfo_children():
+            widget.destroy()
+
+        data = [
+            ("Protein ID", self.protein_dropdown.get(), False),
+            ("Drug ID", self.drug_dropdown.get(), False),
+            ("Drug SMILES String", smiles_str, True),
+            ("", "", False),  # Add an extra label for padding
+            ("Actual pChEMBL", actual_pchembl_str, False),
+            ("Predicted pChEMBL", pred_pchembl_str, False),
+        ]
+
+        row = 0
+        for label, value, newline in data:
+            label = tk.Message(self.info_frame, text=label, font=("Arial", 10, "bold"), anchor="w",
+                               width=280 if newline else 140)
+            label.grid(row=row, column=0, sticky="w", padx=5, pady=2, columnspan=2 if newline else 1)
+
+            if newline:
+                value = tk.Message(self.info_frame, text=value, font=("Arial", 10), anchor="w", width=280)
+                value.grid(row=row + 1, column=0, sticky="w", padx=5, pady=2, columnspan=2)
+                row += 2
+            else:
+                value = tk.Message(self.info_frame, text=value, font=("Arial", 10), anchor="w", width=140)
+                value.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+                row += 1
 
     def _update_drug_dropdown(self, event: tk.Event = None) -> None:
         selected_protein = self.protein_dropdown.get()
@@ -119,10 +172,13 @@ class MoleculeViewer(tk.Tk):
             return
 
         idx = self.pair_to_idx_mapping[(protein_chembl_id, drug_chembl_id)]
-        node_contributions = self._get_node_contributions(idx)
+        node_contributions, pred_pchembl = self._get_node_contributions(idx)
         mol = self.dataset.drug_graphs[idx].mol
+        actual_pchembl = self.dataset.pchembl_scores[idx]
+        drug_smiles_str = self.dataset.smiles_strs[idx]
 
         self._draw_molecule(mol, node_contributions)
+        self._update_info_frame(str(round(actual_pchembl, 2)), str(round(pred_pchembl, 2)), drug_smiles_str)
 
     def _draw_molecule(self, mol: rdkit.Chem.Mol, node_contributions: list[float],
                        contribution_scaler: float = 0.3) -> None:
@@ -184,7 +240,7 @@ class MoleculeViewer(tk.Tk):
             interpolation='bilinear'
         )
 
-    def _get_node_contributions(self, idx: int) -> list[float]:
+    def _get_node_contributions(self, idx: int) -> tuple[list[float], float]:
         node_features, edge_features, adjacency_matrix, pchembl_score = self.dataset[idx]
         # Count the number of atoms in the drug molecule (excluding atoms that were added for padding).
         num_real_nodes = (adjacency_matrix.sum(dim=1) != 0).sum().item()
@@ -214,11 +270,12 @@ class MoleculeViewer(tk.Tk):
             # a positive contribution).
             node_contributions.append(real_pred - x)
 
-        return node_contributions
+        return node_contributions, real_pred
 
 
 def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    data_df = pd.read_csv(f'{data_path}/filtered_cancer_all.csv')
+    # TODO - change to using filtered_cancer_all.csv dataset
+    data_df = pd.read_csv(f'{data_path}/filtered_cancer_small.csv')
     protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
     return data_df, protein_embeddings_df
 
