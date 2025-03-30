@@ -19,18 +19,20 @@ class DrugMolecule:
 
         self.node_tensor, self.edge_tensor, self.adjacency_tensor = self._tensor_preprocess()
 
-    def find_functional_group(self, functional_group: FunctionalGroup) -> dict[int, int]:
+    def find_functional_group(self, functional_group: FunctionalGroup) -> list[dict[int, int]]:
         root_node_specs = functional_group.get_root_node_specs()
+        final_found_dicts = []
         for node_num, node_specs in enumerate(self.node_features):
             if self._check_features_match(root_node_specs, node_specs):
                 # If this node matches the root node, create a mapping between this node and the root node.
                 found_dict = {functional_group.root_node: node_num}
-                new_found_dict = self._functional_group_helper(functional_group, functional_group.root_node, found_dict)
-                if len(new_found_dict) > 0:
-                   return new_found_dict
+                new_found_dicts = self._functional_group_helper(functional_group, functional_group.root_node, found_dict)
+                if len(new_found_dicts) > 0:
+                    final_found_dicts.extend(new_found_dicts)
+        return final_found_dicts
 
     def _functional_group_helper(self, functional_group: FunctionalGroup, node: int,
-                                 found_dict: dict[int, int]) -> dict[int, int]:
+                                 found_dict: dict[int, int]) -> list[dict[int, int]]:
         drug_node = found_dict[node]
         functional_group_neighbours = functional_group.neighbours[node]
         # Create a dictionary that tracks the options for drug nodes that can be used for a given
@@ -52,7 +54,7 @@ class DrugMolecule:
 
                 if not self._check_features_match(expected_edge_features, actual_edge_features):
                     # If an edge features conflict occurs, no matching subgraph can be found.
-                    return {}
+                    return []
             else:
                 curr_options = []
                 for possible_drug_node in self.neighbours[drug_node]:
@@ -65,28 +67,35 @@ class DrugMolecule:
 
                 if len(curr_options) == 0:
                     # If no options were found, a matching subgraph can't be found.
-                    return {}
+                    return []
                 else:
                     functional_group_node_to_drug_nodes[x] = curr_options
 
         if len(functional_group_node_to_drug_nodes) == 0:
             # No more nodes need to be added to the subgraph, so a complete subgraph has been found.
-            return found_dict
+            return [found_dict]
 
+        final_found_dicts = []
         for combination in self._get_unique_combinations(functional_group_node_to_drug_nodes):
             functional_group_nodes = list(combination.keys())
             drug_nodes = list(combination.values())
             # Add the current combination being tried to found_dict.
-            new_found_dict = found_dict.copy() | combination
+            curr_found_dicts = [found_dict.copy() | combination]
+            old_found_dicts = []
 
             for curr_functional_group_node in functional_group_nodes:
-                new_found_dict = self._functional_group_helper(functional_group, curr_functional_group_node,
-                                                               new_found_dict)
-                if len(new_found_dict) == 0:
-                    return {}
+                old_found_dicts = curr_found_dicts
+                curr_found_dicts = []
+                for found_dict in old_found_dicts:
+                    curr_found_dicts.extend(self._functional_group_helper(
+                        functional_group, curr_functional_group_node, found_dict))
 
-            return new_found_dict
-        return {}
+                if len(curr_found_dicts) == 0:
+                    return []
+
+            final_found_dicts.extend(curr_found_dicts)
+
+        return final_found_dicts
 
     def _get_unique_combinations(self, options_dict: dict[Any, list]) -> list[dict[Any, Any]]:
         keys, values = zip(*sorted(options_dict.items()))  # Extract keys and ordered value lists
@@ -275,5 +284,5 @@ class DrugProteinDataset(Dataset):
 
 
 if __name__ == "__main__":
-    drug_mol = DrugMolecule("C/C(=C\c1ccc(NS(=O)(=O)c2ccccc2)cc1)C(=O)NO")
+    drug_mol = DrugMolecule("CN(C)c1cccc2c(S(=O)(=O)N(C)C[C@H](C(=O)NO)[C@@H](CC3CCCC3)C(=O)N3CCCCC3)cccc12")
     print(drug_mol.find_functional_group(Aldehyde()))
