@@ -55,6 +55,7 @@ class GlobalAttentionPooling(nn.Module):
             nn.Linear(in_features, hidden_dim),
             nn.LayerNorm(hidden_dim),  # Added normalization
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, out_features)
         )
 
