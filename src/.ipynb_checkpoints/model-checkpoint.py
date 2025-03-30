@@ -15,11 +15,11 @@ class GraphAttentionNetwork(nn.Module):
         else:
             layers = [GraphAttentionLayer(device, in_features, hidden_size, 
                                           num_edge_features, num_attn_heads, dropout=dropout)]
+
             for i in range(num_layers - 2):
                 layers.append(GraphAttentionLayer(device, hidden_size, hidden_size, 
                                                   num_edge_features, num_attn_heads, dropout=dropout))
 
-            # This is set to one for reasons beyond my understanding
             layers.append(GraphAttentionLayer(device, hidden_size, out_features, 
                                               num_edge_features, num_attn_heads=1, dropout=dropout, use_leaky_relu=False))
 
@@ -55,6 +55,7 @@ class GlobalAttentionPooling(nn.Module):
             nn.Linear(in_features, hidden_dim),
             nn.LayerNorm(hidden_dim),  # Added normalization
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, out_features)
         )
 
@@ -94,10 +95,6 @@ class GraphAttentionLayer(nn.Module):
             nn.Linear(2 * num_edge_features, num_edge_features)
         )
         self.layer_norm_2 = nn.LayerNorm(num_edge_features)
-        self.edge_gate = nn.Sequential(
-            nn.Linear(num_edge_features, 1),
-            nn.Sigmoid()
-        )
 
         self.use_leaky_relu = use_leaky_relu
         if use_leaky_relu:
@@ -115,9 +112,6 @@ class GraphAttentionLayer(nn.Module):
         # Initialize necessary parameters using a Xavier uniform distribution.
         nn.init.xavier_uniform_(self.node_projection.weight.data, gain=math.sqrt(2))
         nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
-        nn.init.xavier_uniform_(self.edge_mlp[0].weight, gain=math.sqrt(2))
-        nn.init.xavier_uniform_(self.edge_mlp[2].weight, gain=math.sqrt(2))
-        nn.init.xavier_uniform_(self.edge_gate[0].weight, gain=math.sqrt(2))
 
         # Add residual projection if in_features doesn't match out_features.
         if in_features != out_features:
@@ -141,8 +135,7 @@ class GraphAttentionLayer(nn.Module):
         # [B, N, N, F_edge] -> [B, N, N, F_edge]
         edge_normalized = self.layer_norm_2(edge_features)
         edge_update = self.edge_mlp(edge_normalized)
-        gate = self.edge_gate(edge_residual)  # Gate uses original features
-        new_edge_features = gate * edge_update + (1 - gate) * edge_residual
+        new_edge_features = edge_update + edge_residual
 
         # Split the node_features for every attention head.
         # [B, N, F_out] -> [B, N, num_heads, F_out // num_heads]
