@@ -2,26 +2,118 @@ import rdkit.Chem
 from rdkit import Chem
 from typing import Any
 import pandas as pd
+from itertools import product
 
 import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 
+from functional_groups import *
+
 
 class DrugMolecule:
     def __init__(self, smiles_str: str) -> None:
-        self.mol, self.node_features, self.edge_features, self.adjacency_list = (
+        self.mol, self.node_features, self.edge_features, self.adjacency_list, self.neighbours = (
             self._construct_molecular_graph(smiles_str))
         self.num_nodes = len(self.node_features)
 
         self.node_tensor, self.edge_tensor, self.adjacency_tensor = self._tensor_preprocess()
 
-    def _construct_molecular_graph(self, smiles_str: str) -> tuple[rdkit.Chem.Mol, list[Any], list[Any], list[Any]]:
+    def find_functional_group(self, functional_group: FunctionalGroup) -> dict[int, int]:
+        root_node_specs = functional_group.get_root_node_specs()
+        for node_num, node_specs in enumerate(self.node_features):
+            if self._check_features_match(root_node_specs, node_specs):
+                # If this node matches the root node, create a mapping between this node and the root node.
+                found_dict = {functional_group.root_node: node_num}
+                new_found_dict = self._functional_group_helper(functional_group, functional_group.root_node, found_dict)
+                if len(new_found_dict) > 0:
+                   return new_found_dict
+
+    def _functional_group_helper(self, functional_group: FunctionalGroup, node: int,
+                                 found_dict: dict[int, int]) -> dict[int, int]:
+        drug_node = found_dict[node]
+        functional_group_neighbours = functional_group.neighbours[node]
+        # Create a dictionary that tracks the options for drug nodes that can be used for a given
+        # functional group node.
+        functional_group_node_to_drug_nodes = {}
+
+        for x in functional_group_neighbours:
+            expected_node_features = functional_group.node_features[x]
+            expected_edge_features = functional_group.edge_features[(x, node)] \
+                if (x, node) in functional_group.edge_features \
+                else functional_group.edge_features[(node, x)]
+
+            # If this node has already been used, check that its edge matches the function group specification.
+            if x in found_dict:
+                # Check that the edge features match the expected edge features.
+                actual_edge_features = self.edge_features[(drug_node, found_dict[x])] \
+                    if (drug_node, found_dict[x]) in self.edge_features \
+                    else self.edge_features[(found_dict[x], drug_node)]
+
+                if not self._check_features_match(expected_edge_features, actual_edge_features):
+                    # If an edge features conflict occurs, no matching subgraph can be found.
+                    return {}
+            else:
+                curr_options = []
+                for possible_drug_node in self.neighbours[drug_node]:
+                    if self._check_features_match(expected_node_features, self.node_features[possible_drug_node]):
+                        actual_edge_features = self.edge_features[(drug_node, possible_drug_node)] \
+                            if (drug_node, possible_drug_node) in self.edge_features \
+                            else self.edge_features[(possible_drug_node, drug_node)]
+                        if self._check_features_match(expected_edge_features, actual_edge_features):
+                            curr_options.append(possible_drug_node)
+
+                if len(curr_options) == 0:
+                    # If no options were found, a matching subgraph can't be found.
+                    return {}
+                else:
+                    functional_group_node_to_drug_nodes[x] = curr_options
+
+        if len(functional_group_node_to_drug_nodes) == 0:
+            # No more nodes need to be added to the subgraph, so a complete subgraph has been found.
+            return found_dict
+
+        for combination in self._get_unique_combinations(functional_group_node_to_drug_nodes):
+            functional_group_nodes = list(combination.keys())
+            drug_nodes = list(combination.values())
+            # Add the current combination being tried to found_dict.
+            new_found_dict = found_dict.copy() | combination
+
+            for curr_functional_group_node in functional_group_nodes:
+                new_found_dict = self._functional_group_helper(functional_group, curr_functional_group_node,
+                                                               new_found_dict)
+                if len(new_found_dict) == 0:
+                    return {}
+
+            return new_found_dict
+        return {}
+
+    def _get_unique_combinations(self, options_dict: dict[Any, list]) -> list[dict[Any, Any]]:
+        keys, values = zip(*sorted(options_dict.items()))  # Extract keys and ordered value lists
+        all_combinations = product(*values)  # Generate all possible combinations
+
+        # Convert to dictionaries and filter out those with duplicate values.
+        unique_dicts = [
+            dict(zip(keys, combo)) for combo in all_combinations if len(set(combo)) == len(combo)
+        ]
+
+        return unique_dicts
+
+    def _check_features_match(self, features_to_check: dict[Any, Any], curr_features: dict[Any, Any]) -> bool:
+        # Check if the current node matches all the specifications.
+        for key, val in features_to_check.items():
+            if curr_features[key] != val:
+                return False
+        return True
+
+    def _construct_molecular_graph(self, smiles_str: str) \
+            -> tuple[rdkit.Chem.Mol, list[Any], dict[Any, Any], list[Any], list[list[int]]]:
         mol = Chem.RemoveHs(Chem.MolFromSmiles(smiles_str))  # remove explicit H atoms
 
         node_features = []
         adjacency_list = []
-        edge_features = []
+        edge_features = {}
+        neighbours = []
 
         for atom in mol.GetAtoms():
             feats = {
@@ -32,6 +124,7 @@ class DrugMolecule:
                 "aromatic": int(atom.GetIsAromatic())
             }
             node_features.append(feats)
+            neighbours.append([])
 
         for bond in mol.GetBonds():
             i = bond.GetBeginAtomIdx()
@@ -41,12 +134,14 @@ class DrugMolecule:
                 "conjugated": int(bond.GetIsConjugated()),
                 "ring": int(bond.IsInRing())
             }
-            edge_features.append(((i, j), bond_feat))
+            edge_features[(i, j)] =  bond_feat
             # Undirected adjacency
             adjacency_list.append((i, j))
             adjacency_list.append((j, i))
+            neighbours[i].append(j)
+            neighbours[j].append(i)
 
-        return mol, node_features, edge_features, adjacency_list
+        return mol, node_features, edge_features, adjacency_list, neighbours
 
     def _tensor_preprocess(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         processed_node_features = []
@@ -60,7 +155,7 @@ class DrugMolecule:
         # 14 different bond types plus 2 numerical variables
         num_edge_features = 16
         edge_tensor = torch.zeros((self.num_nodes, self.num_nodes, num_edge_features))
-        for (node_1, node_2), features in self.edge_features:
+        for (node_1, node_2), features in self.edge_features.items():
             edge_tensor[node_1, node_2, :] = torch.tensor(self._process_edge_features(features))
         edge_tensor = edge_tensor.type(torch.float32)
         # Pad the dimensions that are dependent on the number of nodes.
@@ -177,3 +272,8 @@ class DrugProteinDataset(Dataset):
             (node_features, reshaped_protein_embedding), dim=-1)
 
         return node_features, edge_features, adjacency_matrix, pchembl_score
+
+
+if __name__ == "__main__":
+    drug_mol = DrugMolecule("C/C(=C\c1ccc(NS(=O)(=O)c2ccccc2)cc1)C(=O)NO")
+    print(drug_mol.find_functional_group(Aldehyde()))
