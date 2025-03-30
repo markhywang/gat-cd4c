@@ -26,7 +26,7 @@ class MoleculeViewer(tk.Tk):
         super().__init__()
 
         self.title("CD4C Molecule Viewer")
-        self.state("zoomed")
+        self.state("normal")
         # Use a white background.
         self.configure(bg="white")
 
@@ -47,6 +47,7 @@ class MoleculeViewer(tk.Tk):
             96,
             7,
             6,
+            0.0,
             0.0,
             96
         ).to(torch.float32).to("cpu")
