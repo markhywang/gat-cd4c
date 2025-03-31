@@ -47,7 +47,7 @@ class AnalysisApp(tk.Tk):
 
         super().title("CandidateDrug4Cancer Analysis")
 
-        data_df, protein_embeddings_df = load_data(data_path)
+        data_df, protein_embeddings_df = self.load_data(data_path)
         # TODO - remove hard-coded model parameters
         self.model = GraphAttentionNetwork(
             "cpu",
@@ -75,6 +75,12 @@ class AnalysisApp(tk.Tk):
 
         model_analysis = ModelBenchmark(self, data_df, protein_embeddings_df, self.model)
         self.notebook.add(model_analysis, text="Model Benchmark")
+
+    def load_data(self, data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Load the drug-protein interaction data from the specified directory."""
+        data_df = pd.read_csv(f'{data_path}/filtered_cancer_all.csv')
+        protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
+        return data_df, protein_embeddings_df
 
 
 class ModelBenchmark(tk.Frame):
@@ -119,9 +125,11 @@ class ModelBenchmark(tk.Frame):
         self.bind("<Destroy>", self._on_destroy)
 
     def _on_destroy(self, event) -> None:
+        """Close all Matplotlib plots when the frame is destroyed."""
         self._close_plots()
 
     def _close_plots(self):
+        """Close all Matplotlib plots to free system resources."""
         if self.plots['confusion'] is not None:
             plt.close(self.plots['confusion'])
         if self.plots['scatter'] is not None:
@@ -130,6 +138,7 @@ class ModelBenchmark(tk.Frame):
             plt.close(self.plots['auc_roc'])
 
     def _update_display(self) -> None:
+        """Update the display with three plots (confusion matrix, scatter plot, and ROC curve)."""
         test_dataset = self._get_test_dataset(self.data_df, self.protein_embeddings_df)
         pchembl_preds, pchembl_labels = self._eval_model(self.percent_data_slider.get(), test_dataset)
 
@@ -140,6 +149,7 @@ class ModelBenchmark(tk.Frame):
         self._update_auc_roc(pchembl_preds, pchembl_labels)
 
     def _create_settings_frame(self):
+        """Create a settings frame with options that the user can interact with."""
         settings_frame = tk.Frame(self, padx=5, pady=5)
 
         # Create a slider that controls the percentage of test data that is used to do the analysis.
@@ -154,6 +164,7 @@ class ModelBenchmark(tk.Frame):
         settings_frame.grid(row=0, column=0, padx=20, pady=(20, 0), sticky='w')
 
     def _update_confusion_matrix(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor) -> None:
+        """Create and display the confusion matrix."""
         confusion_dict = self._get_confusion_dict(pchembl_preds, pchembl_labels)
         self.plots['confusion'], precision, recall, accuracy = self._plot_confusion_matrix(confusion_dict)
 
@@ -168,6 +179,7 @@ class ModelBenchmark(tk.Frame):
                  font=("Arial", 12, "bold"), bg="white", wraplength=300).grid(row=2, column=0)
 
     def _plot_confusion_matrix(self, confusion_dict: dict[str, float]) -> tuple[plt.Figure, float, float, float]:
+        """Create a figure of the confusion matrix and return relevant numerical metrics."""
         # Extract values from the dictionary.
         tp = confusion_dict['true_positive']
         fp = confusion_dict['false_positive']
@@ -212,6 +224,7 @@ class ModelBenchmark(tk.Frame):
 
     def _get_confusion_dict(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor,
                             pchembl_threshold: float = 7.0) -> dict[str, int]:
+        """Get a dictionary with the confusion matrix."""
         positive_preds = [x >= pchembl_threshold for x in pchembl_preds]
         positive_labels = [x >= pchembl_threshold for x in pchembl_labels]
         confusion_dict = {'true_positive': 0, 'false_positive': 0, 'true_negative': 0, 'false_negative': 0}
@@ -224,6 +237,7 @@ class ModelBenchmark(tk.Frame):
         return confusion_dict
 
     def _update_scatter(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor):
+        """Create and display the scatter plot."""
         self.plots['scatter'], r_squared, percent_close_preds = self._plot_scatter(pchembl_preds, pchembl_labels)
 
         # Embed the plot into the Tkinter frame.
@@ -238,6 +252,7 @@ class ModelBenchmark(tk.Frame):
 
     def _plot_scatter(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor) \
             -> tuple[plt.Figure, float, float]:
+        """Create a figure of the scatter plot and return relevant numerical metrics."""
         preds = pchembl_preds.cpu().detach().numpy()
         labels = pchembl_labels.cpu().detach().numpy()
         r_squared = get_r_squared(preds, labels)
@@ -272,6 +287,7 @@ class ModelBenchmark(tk.Frame):
         return fig, r_squared, percent_close_preds
 
     def _update_auc_roc(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor):
+        """Create and display the ROC curve."""
         self.plots['auc_roc'], auc_roc_score = self._plot_auc_roc(pchembl_preds, pchembl_labels)
 
         # Embed the plot into the Tkinter frame.
@@ -286,6 +302,7 @@ class ModelBenchmark(tk.Frame):
 
     def _plot_auc_roc(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor, pchembl_threshold: float = 7.0) \
             -> tuple[plt.Figure, float]:
+        """Create a figure of the ROC curve and return relevant numerical metrics."""
         preds = pchembl_preds.cpu().tolist()
         labels = [x >= pchembl_threshold for x in pchembl_labels]
 
@@ -310,7 +327,13 @@ class ModelBenchmark(tk.Frame):
 
     def _eval_model(self, percent_data, test_dataset: DrugProteinDataset, batch_size: int = 50) \
             -> tuple[torch.Tensor, torch.Tensor]:
-        assert 0 < percent_data <= 1
+        """Evaluate the model on the test data to get pChEMBL predictions.
+
+        Preconditions:
+            - 0 < percent_data <= 1
+            - batch_size > 0
+            - len(test_dataset) > 0
+        """
 
         # Choose an arbitrary batch size to prevent input from utilizing too much RAM.
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -331,6 +354,7 @@ class ModelBenchmark(tk.Frame):
                 pchembl_preds = torch.cat((pchembl_preds, preds))
                 pchembl_labels = torch.cat((pchembl_labels, pchembl_scores))
 
+                # Stop evaluating the model if the target amount of data has already been collected.
                 if batch_num == num_batches - 1:
                     break
 
@@ -341,6 +365,7 @@ class ModelBenchmark(tk.Frame):
 
     def _get_test_dataset(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, seed: int = 0,
                           frac_validation: float = 0.15, frac_test: float = 0.15) -> DrugProteinDataset:
+        """Get the full test dataset using the splits used for training."""
         data_df['stratify_col'] = data_df['Target_ID'] + "_" + data_df['label'].astype(str)
         training_df, remaining_df = train_test_split(data_df,
                                                      test_size=frac_validation + frac_test,
@@ -416,6 +441,7 @@ class MoleculeViewer(tk.Frame):
         self._create_info_frame()
 
     def _init_canvas(self, size: int = 1200, **kwargs) -> tuple[Figure, plt.Axes, FigureCanvasTkAgg]:
+        """Initialize an empty canvas which will later be used to display the drug molecule."""
         fig = Figure()
         ax = fig.add_subplot()
         ax.set_xlim(0, size)
@@ -431,6 +457,7 @@ class MoleculeViewer(tk.Frame):
         return fig, ax, canvas
 
     def _create_settings_frame(self) -> None:
+        """Create a settings frame with options that the user can interact with."""
         # Use a larger font.
         font = ("Arial", 12)
         x_pad = 30
@@ -462,6 +489,7 @@ class MoleculeViewer(tk.Frame):
         self.tk_widgets['submit_button'].pack(padx=x_pad, pady=20)
 
     def _create_mode_settings(self):
+        """Create a frame that controls which mode to use (node contributions mode or functional groups mode)."""
         # Create variables to track which mode is currently selected.
         self.tk_widgets['node_contributions_mode'] = tk.IntVar()
         self.tk_widgets['functional_groups_mode'] = tk.IntVar()
@@ -485,12 +513,14 @@ class MoleculeViewer(tk.Frame):
         self._create_functional_group_settings()
 
     def _toggle_mode(self, selected_mode: str) -> None:
+        """Update checkboxes to ensure that both modes aren't selected simultaneously."""
         if selected_mode == 'node_contributions':
             self.tk_widgets['functional_groups_mode'].set(0)
         elif selected_mode == 'functional_groups':
             self.tk_widgets['node_contributions_mode'].set(0)
 
     def _create_functional_group_settings(self) -> None:
+        """Create the settings that allow the user to select which functional groups to highlight."""
         self.functional_groups = {'ketone': Ketone(), 'ether': Ether(), 'alcohol': Alcohol(), 'amine': Amine()}
 
         for key in self.functional_groups:
@@ -503,6 +533,7 @@ class MoleculeViewer(tk.Frame):
             check_button.pack()
 
     def _create_info_frame(self) -> None:
+        """Create a frame the contains information about the drug molecule being displayed."""
         self.tk_widgets['info_frame'] = tk.Frame(self, width=400, padx=10, pady=10)
         self.tk_widgets['info_frame'].grid_propagate(False)
         self.tk_widgets['info_frame'].grid(row=0, column=2, sticky="ns", padx=50, pady=100)
@@ -510,6 +541,7 @@ class MoleculeViewer(tk.Frame):
         self._update_info_frame("", "", "")
 
     def _update_info_frame(self, actual_pchembl_str: str, pred_pchembl_str: str, smiles_str: str) -> None:
+        """Populate the information frame given the user's inputs."""
         for widget in self.tk_widgets['info_frame'].winfo_children():
             widget.destroy()
 
@@ -538,6 +570,7 @@ class MoleculeViewer(tk.Frame):
                 row += 1
 
     def _update_drug_dropdown(self, event: tk.Event = None) -> None:
+        """Filter the drug dropdown to only include molecules that have been tested with the selected protein."""
         selected_protein = self.tk_widgets['protein_dropdown'].get()
         if selected_protein == "":
             self.tk_widgets['drug_dropdown']["values"] = [""]
@@ -549,6 +582,7 @@ class MoleculeViewer(tk.Frame):
                 self.tk_widgets['drug_dropdown'].current(0)
 
     def _update_display(self) -> None:
+        """Update the display to show the specified drug-protein interaction."""
         protein_chembl_id = self.tk_widgets['protein_dropdown'].get()
         drug_chembl_id = self.tk_widgets['drug_dropdown'].get()
 
@@ -567,6 +601,7 @@ class MoleculeViewer(tk.Frame):
         self._update_info_frame(str(round(actual_pchembl, 2)), str(round(pred_pchembl, 2)), drug_smiles_str)
 
     def _draw_molecule(self, mol: rdkit.Chem.Mol, node_contributions: list[float], drug_graph: DrugMolecule) -> None:
+        """Draw the drug molecule on the canvas."""
         # Generate 2D coordinates for the molecule.
         AllChem.Compute2DCoords(mol)
 
@@ -589,6 +624,7 @@ class MoleculeViewer(tk.Frame):
 
     def _display_node_contributions(self, mol: rdkit.Chem.Mol, drawer: rdkit.Chem.Draw.rdMolDraw2D,
                                     node_contributions: list[float]) -> None:
+        """Highlight atoms on the drug graph based on their contribution to the interaction."""
         for i in range(mol.GetNumAtoms()):
             # Get the coordinates for the ith atom.
             x, y = drawer.GetDrawCoords(i)
@@ -601,6 +637,7 @@ class MoleculeViewer(tk.Frame):
             self._create_gradient_circle(x, y, 200, color_scheme, center_alpha=abs(scaled_contribution))
 
     def _display_functional_groups(self, drawer: rdkit.Chem.Draw.rdMolDraw2D, drug_graph: DrugMolecule) -> None:
+        """Highlight the functional groups present in the drug molecule."""
         for key in self.functional_groups:
             if self.tk_widgets[key + '_toggle'].get() == 0:
                 continue
@@ -616,6 +653,7 @@ class MoleculeViewer(tk.Frame):
 
     def _create_gradient_circle(self, x: int, y: int, radius: int, color_scheme: str,
                                 center_alpha: float = 0.3, edge_alpha: float = 0) -> None:
+        """Create a circle on the canvas with a gradient that is more intense towards the center."""
         # Create a grid for the gradient.
         grid_size = 500
         x_vals = np.linspace(x - radius, x + radius, grid_size)
@@ -648,6 +686,7 @@ class MoleculeViewer(tk.Frame):
         )
 
     def _create_uniform_circle(self, x: int, y: int, radius: int, color: str, alpha: float) -> None:
+        """Create a circle on the canvas with a uniform opacity."""
         # Convert color string to RGB tuple.
         rgb = mcolors.to_rgb(color)
 
@@ -680,6 +719,7 @@ class MoleculeViewer(tk.Frame):
         )
 
     def _get_node_contributions(self, idx: int) -> tuple[list[float], float]:
+        """Evaluate the model to determine which atoms contribute the most to the interaction with the protein."""
         node_features, edge_features, adjacency_matrix, pchembl_score = self.dataset[idx]
         # Count the number of atoms in the drug molecule (excluding atoms that were added for padding).
         num_real_nodes = (adjacency_matrix.sum(dim=1) != 0).sum().item()
@@ -711,12 +751,6 @@ class MoleculeViewer(tk.Frame):
             node_contributions.append(real_pred - x)
 
         return node_contributions, real_pred
-
-
-def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    data_df = pd.read_csv(f'{data_path}/filtered_cancer_all.csv')
-    protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
-    return data_df, protein_embeddings_df
 
 
 if __name__ == '__main__':
