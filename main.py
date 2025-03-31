@@ -20,7 +20,11 @@ import math
 import io
 from PIL import Image
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_curve, auc
+import sys
+import os
 
+sys.path.append(os.path.abspath("src"))
 from utils.dataset import DrugProteinDataset, DrugMolecule
 from utils.helper_functions import set_seeds
 from utils.functional_groups import *
@@ -49,7 +53,7 @@ class AnalysisApp(tk.Tk):
             96
         ).to(torch.float32).to("cpu")
         self.model.load_state_dict(
-            torch.load("../models/model.pth", weights_only=False, map_location=torch.device('cpu')))
+            torch.load("models/model.pth", weights_only=False, map_location=torch.device('cpu')))
         self.model.eval()
 
         self.notebook = ttk.Notebook(self)
@@ -65,43 +69,49 @@ class AnalysisApp(tk.Tk):
 
 
 class ModelAnalysis(tk.Frame):
-    def __init__(self, root: tk.Tk, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame,
-                 model: nn.Module) -> None:
+    def __init__(self, root: tk.Tk, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, model: nn.Module,
+                 fig_size: tuple[float, float] = (3.2, 3.4), canvas_size: tuple[int, int] = (400, 425)) -> None:
         super().__init__(root)
 
         # Use a white background.
         self.configure(bg="white")
+
+        self.fig_size = fig_size
+        self.canvas_size = canvas_size
 
         self.model = model
         self.data_df = data_df
         self.protein_embeddings_df = protein_embeddings_df
         self._create_settings_frame()
 
-        self.bind("<Destroy>", self._on_destroy)
         self.confusion_plot = None
         self.confusion_canvas = None
         self.scatter_plot = None
         self.scatter_canvas = None
+        self.auc_roc_plot = None
+        self.auc_roc_canvas = None
+        self.bind("<Destroy>", self._on_destroy)
 
     def _on_destroy(self, event) -> None:
+        self._close_plots()
+
+    def _close_plots(self):
         if self.confusion_plot is not None:
             plt.close(self.confusion_plot)
         if self.scatter_plot is not None:
             plt.close(self.scatter_plot)
+        if self.auc_roc_plot is not None:
+            plt.close(self.auc_roc_plot)
 
     def _update_display(self) -> None:
         self.test_dataset = self._get_test_dataset(self.data_df, self.protein_embeddings_df)
         self.pchembl_preds, self.pchembl_labels = self._eval_model(self.percent_data_slider.get())
 
-        if self.confusion_plot is not None:
-            self.confusion_canvas.get_tk_widget().destroy()
-            plt.close(self.confusion_plot)
-        if self.scatter_plot is not None:
-            self.scatter_canvas.get_tk_widget().destroy()
-            plt.close(self.scatter_plot)
+        self._close_plots()
 
         self._update_confusion_matrix()
         self._update_scatter()
+        self._update_auc_roc()
 
     def _create_settings_frame(self):
         settings_frame = tk.Frame(self, padx=5, pady=5)
@@ -115,7 +125,7 @@ class ModelAnalysis(tk.Frame):
         generate_button = tk.Button(settings_frame, text="Generate Analysis", command=self._update_display)
         generate_button.grid(row=0, column=1, rowspan=2, padx=20, pady=20)
 
-        settings_frame.grid(row=0, column=0, padx=20, pady=20, sticky='w')
+        settings_frame.grid(row=0, column=0, padx=20, pady=(20, 0), sticky='w')
 
     def _update_confusion_matrix(self):
         confusion_dict = self._get_confusion_dict()
@@ -124,8 +134,8 @@ class ModelAnalysis(tk.Frame):
         # Embed the plot into the Tkinter frame.
         self.confusion_canvas = FigureCanvasTkAgg(self.confusion_plot, master=self)
         self.confusion_canvas.draw()
-        self.confusion_canvas.get_tk_widget().config(width=500, height=400)
-        self.confusion_canvas.get_tk_widget().grid(row=1, column=0, padx=20, pady=20)
+        self.confusion_canvas.get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
+        self.confusion_canvas.get_tk_widget().grid(row=1, column=0, padx=5, pady=5)
 
     def _plot_confusion_matrix(self, confusion_dict: dict[str, float]) -> plt.Figure:
         # Extract values from the dictionary.
@@ -141,16 +151,17 @@ class ModelAnalysis(tk.Frame):
         matrix_norm = matrix.astype('float') / matrix.sum()
 
         # Create the plot.
-        fig, ax = plt.subplots(figsize=(4, 4))
+        fig, ax = plt.subplots(figsize=(self.fig_size[0], self.fig_size[1]))
 
         # Add a color bar on the right side that uses different shades of blue.
         cax = ax.matshow(matrix_norm, cmap='Blues')
-        plt.colorbar(cax, shrink=0.8)
+        # Shrink the color bar to better match the size of the confusion matrix.
+        plt.colorbar(cax, shrink=0.5)
 
         # Set tick positions and labels.
         ax.set_xticks([0, 1])
         ax.set_yticks([0, 1])
-        ax.set_xticklabels(['Predicted Positive', 'Predicted Negative'], fontsize=8)
+        ax.set_xticklabels(['Predicted\nPositive', 'Predicted\nNegative'], fontsize=8)
         ax.set_yticklabels(['Actual\nPositive', 'Actual\nNegative'], fontsize=8)
 
         # Annotate each cell with its value.
@@ -165,21 +176,33 @@ class ModelAnalysis(tk.Frame):
 
         return fig
 
+    def _get_confusion_dict(self, pchembl_threshold: float = 7.0) -> dict[str, int]:
+        positive_preds = [x >= pchembl_threshold for x in self.pchembl_preds]
+        positive_labels = [x >= pchembl_threshold for x in self.pchembl_labels]
+        confusion_dict = {'true_positive': 0, 'false_positive': 0, 'true_negative': 0, 'false_negative': 0}
+
+        for pred, label in zip(positive_preds, positive_labels):
+            pred_str = 'positive' if pred else 'negative'
+            is_correct = 'true' if pred == label else 'false'
+            confusion_dict[f"{is_correct}_{pred_str}"] += 1
+
+        return confusion_dict
+
     def _update_scatter(self):
         self.scatter_plot = self._plot_scatter(self.pchembl_preds, self.pchembl_labels)
 
         # Embed the plot into the Tkinter frame.
         self.scatter_canvas = FigureCanvasTkAgg(self.scatter_plot, master=self)
         self.scatter_canvas.draw()
-        self.scatter_canvas.get_tk_widget().config(width=500, height=400)
-        self.scatter_canvas.get_tk_widget().grid(row=1, column=1, padx=20, pady=20)
+        self.scatter_canvas.get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
+        self.scatter_canvas.get_tk_widget().grid(row=1, column=1, padx=5, pady=5)
 
     def _plot_scatter(self, preds: torch.Tensor, labels: torch.Tensor) -> plt.Figure:
         preds = preds.cpu().detach().numpy()
         labels = labels.cpu().detach().numpy()
 
         # Create the plot.
-        fig, ax = plt.subplots(figsize=(4, 4))
+        fig, ax = plt.subplots(figsize=(self.fig_size[0], self.fig_size[1]))
 
         # Reduce point size from 10 to 1.
         plt.scatter(labels, preds, alpha=0.5, label='Predictions', s=1)
@@ -206,17 +229,37 @@ class ModelAnalysis(tk.Frame):
 
         return fig
 
-    def _get_confusion_dict(self, pchembl_threshold: float = 7.0) -> dict[str, int]:
-        positive_preds = [x >= pchembl_threshold for x in self.pchembl_preds]
-        positive_labels = [x >= pchembl_threshold for x in self.pchembl_labels]
-        confusion_dict = {'true_positive': 0, 'false_positive': 0, 'true_negative': 0, 'false_negative': 0}
+    def _update_auc_roc(self):
+        self.auc_roc_plot = self._plot_auc_roc(self.pchembl_preds, self.pchembl_labels)
 
-        for pred, label in zip(positive_preds, positive_labels):
-            pred_str = 'positive' if pred else 'negative'
-            is_correct = 'true' if pred == label else 'false'
-            confusion_dict[f"{is_correct}_{pred_str}"] += 1;
+        # Embed the plot into the Tkinter frame.
+        self.auc_roc_canvas = FigureCanvasTkAgg(self.auc_roc_plot, master=self)
+        self.auc_roc_canvas.draw()
+        self.auc_roc_canvas.get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
+        self.auc_roc_canvas.get_tk_widget().grid(row=1, column=2, padx=5, pady=5)
 
-        return confusion_dict
+    def _plot_auc_roc(self, preds: torch.Tensor, labels: torch.Tensor, pchembl_threshold: float = 7.0) -> plt.Figure:
+        preds = preds.cpu().tolist()
+        labels = [x >= pchembl_threshold for x in labels]
+
+        # Compute ROC curve and area under curve.
+        fpr, tpr, _ = roc_curve(labels, preds)
+        roc_auc = auc(fpr, tpr)
+
+        # Create the plot
+        fig, ax = plt.subplots(figsize=(self.fig_size[0], self.fig_size[1]))
+        ax.plot(fpr, tpr, color='blue', lw=2, label=f'ROC Curve')
+        ax.plot([0, 1], [0, 1], color='red', linestyle='--', label='y = x')
+
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.set_title('ROC Curve')
+        ax.legend(loc='lower right')
+        ax.grid(True)
+
+        fig.tight_layout()
+
+        return fig
 
     def _eval_model(self, percent_data, batch_size: int = 50) -> tuple[torch.Tensor, torch.Tensor]:
         assert 0 < percent_data <= 1
@@ -610,7 +653,7 @@ def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 if __name__ == '__main__':
     set_seeds(seed=0)
-    app = AnalysisApp('../data')
+    app = AnalysisApp('data')
     app.mainloop()
 
     import python_ta
