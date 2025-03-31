@@ -38,12 +38,12 @@ def plot_decision_boundary(model: torch.nn.Module, X: torch.Tensor, y: torch.Ten
     Plots decision boundaries of model predicting on X in comparison to y.
 
     Source - https://madewithml.com/courses/foundations/neural-networks/ (with modifications)
-    
+
     Args:
         model (torch.nn.Module): The PyTorch model used for prediction.
         X (torch.Tensor): Input features of shape (n_samples, 2).
         y (torch.Tensor): Target labels.
-    
+
     Returns:
         None
     """
@@ -443,6 +443,7 @@ def get_r_squared(preds: np.ndarray, labels: np.ndarray) -> float:
     ss_res = np.sum((preds - labels) ** 2)  # Residual sum of squares
     ss_tot = np.sum((labels - np.mean(labels)) ** 2)  # Total sum of squares
     return 1 - (ss_res / ss_tot)
+
 
 if __name__ == "__main__":
     import doctest
