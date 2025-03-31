@@ -110,6 +110,7 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
     all_labels = np.array(all_labels)
 
     # Convert continuous predictions to binary based on threshold
+    # Python TA is mad about this, but this is okay because preds and labels are np arrays and not lists
     binary_preds = (all_preds >= PCHEMBL_THRESHOLD).astype(int)
     binary_labels = (all_labels >= PCHEMBL_THRESHOLD).astype(int)
 
