@@ -6,6 +6,9 @@ scikit-learn
 rdkit
 typing
 matplotlib
+tkinter
+argparse
+pillow
 transformers
 tqdm
 argparse

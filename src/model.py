@@ -16,7 +16,7 @@ class GraphAttentionNetwork(nn.Module):
     gat_layers: nn.Module
     global_attn_pooling: nn.Module
 
-    def __init__(self, device: str, in_features: int, out_features: int, num_edge_features: int,
+    def __init__(self, device: str | torch.device, in_features: int, out_features: int, num_edge_features: int,
                  hidden_size: int, num_layers: int, num_attn_heads: int, dropout: float, pooling_dropout: float,
                  pooling_dim: int) -> None:
         """Initialize the Graph Attention Network"""
@@ -130,7 +130,7 @@ class GraphAttentionLayer(nn.Module):
         - dropout (nn.Module): Dropout layer to prevent overfitting.
         - residual_proj (nn.Module): Linear transformation for residual connection, or Identity if not needed.
     """
-    device: torch.device
+    device: str | torch.device
     node_projection: nn.Module
     layer_norm_1: nn.Module
     layer_norm_2: nn.Module
@@ -145,7 +145,7 @@ class GraphAttentionLayer(nn.Module):
     dropout: nn.Module
     residual_proj: nn.Module
 
-    def __init__(self, device: str, in_features: int, out_features: int,
+    def __init__(self, device: str | torch.device, in_features: int, out_features: int,
                  num_edge_features: int, num_attn_heads: int = 1, dropout: float = 0.2,
                  use_leaky_relu: bool = True) -> None:
         """Initialize a single GAT layer"""
