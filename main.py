@@ -24,9 +24,10 @@ from sklearn.metrics import roc_curve, auc
 import sys
 import os
 
+# Import local code from src directory.
 sys.path.append(os.path.abspath("src"))
 from utils.dataset import DrugProteinDataset, DrugMolecule
-from utils.helper_functions import set_seeds
+from utils.helper_functions import set_seeds, get_r_squared
 from utils.functional_groups import *
 from model import GraphAttentionNetwork
 
@@ -70,7 +71,7 @@ class AnalysisApp(tk.Tk):
 
 class ModelAnalysis(tk.Frame):
     def __init__(self, root: tk.Tk, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, model: nn.Module,
-                 fig_size: tuple[float, float] = (3.2, 3.4), canvas_size: tuple[int, int] = (400, 425)) -> None:
+                 fig_size: tuple[float, float] = (4.5, 5), canvas_size: tuple[int, int] = (360, 400)) -> None:
         super().__init__(root)
 
         # Use a white background.
@@ -129,7 +130,7 @@ class ModelAnalysis(tk.Frame):
 
     def _update_confusion_matrix(self):
         confusion_dict = self._get_confusion_dict()
-        self.confusion_plot = self._plot_confusion_matrix(confusion_dict)
+        self.confusion_plot, precision, recall, accuracy = self._plot_confusion_matrix(confusion_dict)
 
         # Embed the plot into the Tkinter frame.
         self.confusion_canvas = FigureCanvasTkAgg(self.confusion_plot, master=self)
@@ -137,7 +138,11 @@ class ModelAnalysis(tk.Frame):
         self.confusion_canvas.get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
         self.confusion_canvas.get_tk_widget().grid(row=1, column=0, padx=5, pady=5)
 
-    def _plot_confusion_matrix(self, confusion_dict: dict[str, float]) -> plt.Figure:
+        # Add a label showing the relevant numerical metrics.
+        tk.Label(self, text=f"Precision = {precision:.1%}, Recall = {recall:.1%}, Accuracy = {accuracy:.1%}",
+                 font=("Arial", 12, "bold"), bg="white", wraplength=300).grid(row=2, column=0)
+
+    def _plot_confusion_matrix(self, confusion_dict: dict[str, float]) -> tuple[plt.Figure, float, float, float]:
         # Extract values from the dictionary.
         tp = confusion_dict['true_positive']
         fp = confusion_dict['false_positive']
@@ -174,7 +179,11 @@ class ModelAnalysis(tk.Frame):
         # Automatically adjust subplots to fit into the figure area.
         fig.tight_layout()
 
-        return fig
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn)
+        accuracy = (tp + tn) / (tp + tn + fp + fn)
+
+        return fig, precision, recall, accuracy
 
     def _get_confusion_dict(self, pchembl_threshold: float = 7.0) -> dict[str, int]:
         positive_preds = [x >= pchembl_threshold for x in self.pchembl_preds]
@@ -189,7 +198,7 @@ class ModelAnalysis(tk.Frame):
         return confusion_dict
 
     def _update_scatter(self):
-        self.scatter_plot = self._plot_scatter(self.pchembl_preds, self.pchembl_labels)
+        self.scatter_plot, r_squared, percent_close_preds = self._plot_scatter(self.pchembl_preds, self.pchembl_labels)
 
         # Embed the plot into the Tkinter frame.
         self.scatter_canvas = FigureCanvasTkAgg(self.scatter_plot, master=self)
@@ -197,9 +206,15 @@ class ModelAnalysis(tk.Frame):
         self.scatter_canvas.get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
         self.scatter_canvas.get_tk_widget().grid(row=1, column=1, padx=5, pady=5)
 
-    def _plot_scatter(self, preds: torch.Tensor, labels: torch.Tensor) -> plt.Figure:
+        # Add a label showing the relevant numerical metrics.
+        tk.Label(self, text=f"R² = {r_squared:.3f}, % Close Predictions = {percent_close_preds:.1%}",
+                 font=("Arial", 12, "bold"), bg="white", wraplength=300).grid(row=2, column=1)
+
+    def _plot_scatter(self, preds: torch.Tensor, labels: torch.Tensor) -> tuple[plt.Figure, float, float]:
         preds = preds.cpu().detach().numpy()
         labels = labels.cpu().detach().numpy()
+        r_squared = get_r_squared(preds, labels)
+        percent_close_preds = np.mean(np.abs(preds - labels) <= 1)
 
         # Create the plot.
         fig, ax = plt.subplots(figsize=(self.fig_size[0], self.fig_size[1]))
@@ -227,10 +242,10 @@ class ModelAnalysis(tk.Frame):
         # Automatically adjust subplots to fit into the figure area.
         fig.tight_layout()
 
-        return fig
+        return fig, r_squared, percent_close_preds
 
     def _update_auc_roc(self):
-        self.auc_roc_plot = self._plot_auc_roc(self.pchembl_preds, self.pchembl_labels)
+        self.auc_roc_plot, auc_roc_score = self._plot_auc_roc(self.pchembl_preds, self.pchembl_labels)
 
         # Embed the plot into the Tkinter frame.
         self.auc_roc_canvas = FigureCanvasTkAgg(self.auc_roc_plot, master=self)
@@ -238,13 +253,18 @@ class ModelAnalysis(tk.Frame):
         self.auc_roc_canvas.get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
         self.auc_roc_canvas.get_tk_widget().grid(row=1, column=2, padx=5, pady=5)
 
-    def _plot_auc_roc(self, preds: torch.Tensor, labels: torch.Tensor, pchembl_threshold: float = 7.0) -> plt.Figure:
+        # Add a label showing the relevant numerical metrics.
+        tk.Label(self, text=f"AUC-ROC = {auc_roc_score:.3f}", font=("Arial", 12, "bold"),
+                 bg="white", wraplength=300).grid(row=2, column=2)
+
+    def _plot_auc_roc(self, preds: torch.Tensor, labels: torch.Tensor, pchembl_threshold: float = 7.0) \
+            -> tuple[plt.Figure, float]:
         preds = preds.cpu().tolist()
         labels = [x >= pchembl_threshold for x in labels]
 
         # Compute ROC curve and area under curve.
         fpr, tpr, _ = roc_curve(labels, preds)
-        roc_auc = auc(fpr, tpr)
+        auc_roc_score = auc(fpr, tpr)
 
         # Create the plot
         fig, ax = plt.subplots(figsize=(self.fig_size[0], self.fig_size[1]))
@@ -259,7 +279,7 @@ class ModelAnalysis(tk.Frame):
 
         fig.tight_layout()
 
-        return fig
+        return fig, auc_roc_score
 
     def _eval_model(self, percent_data, batch_size: int = 50) -> tuple[torch.Tensor, torch.Tensor]:
         assert 0 < percent_data <= 1
@@ -361,7 +381,7 @@ class MoleculeViewer(tk.Frame):
 
     def _create_settings_frame(self) -> None:
         # Use a larger font.
-        font = ("Helvetica", 12)
+        font = ("Arial", 12)
         x_pad = 30
 
         # Create a left panel that contains various settings that the user can modify.
