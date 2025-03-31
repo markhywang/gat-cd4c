@@ -248,7 +248,7 @@ class ModelAnalysis(tk.Frame):
         pchembl_labels = pchembl_labels[:target_data_size]
         return pchembl_preds, pchembl_labels
 
-    def _get_test_dataset(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, seed: int = 42,
+    def _get_test_dataset(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, seed: int = 0,
                           frac_validation: float = 0.15, frac_test: float = 0.15) -> DrugProteinDataset:
         data_df['stratify_col'] = data_df['Target_ID'] + "_" + data_df['label'].astype(str)
         training_df, remaining_df = train_test_split(data_df,
