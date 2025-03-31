@@ -1,9 +1,10 @@
+"""Module to benchmark the trained GAT model."""
+
 import argparse
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.data import DataLoader
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
@@ -13,7 +14,6 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     roc_auc_score,
-    roc_curve
 )
 
 from src.model import GraphAttentionNetwork
@@ -21,16 +21,15 @@ from src.utils.dataset import DrugProteinDataset
 from src.utils.helper_functions import set_seeds
 
 # Set device
-device = torch.device("cpu")
+DEVICE = torch.device("cpu")
 
 # Define the thereshold of pCHEMBL in training
-pCHEMBL_THRESHOLD = 7.0
+PCHEMBL_THRESHOLD = 7.0
 
-def load_test_data(data_path: str, seed: int, frac_train: float, frac_validation: float,
-                  frac_test: float, use_small_dataset: bool):
-    """
-    Copy the load_data function from train.py but only returns test dataest.
-    """
+
+def load_test_data(data_path: str, seed: int,
+                   frac_validation: float, frac_test: float, use_small_dataset: bool) -> None:
+    """Copy the load_data function from train.py but only returns test dataest. """
 
     # Choose the appropriate file based on dataset size
     dataset_file = '../data/filter_cancer_small.csv' if use_small_dataset else 'filtered_cancer_all.csv'
@@ -40,15 +39,15 @@ def load_test_data(data_path: str, seed: int, frac_train: float, frac_validation
     # Create a stratification column for balanced splitting
     data_df['stratify_col'] = data_df['Target_ID'] + "_" + data_df['label'].astype(str)
 
-    traing_df, remaining_df = train_test_split(data_df,
-                                               test_size=frac_validation + frac_test,
-                                               stratify=data_df['stratify_col'],
-                                               random_state=seed)
+    _, remaining_df = train_test_split(data_df,
+                                       test_size=frac_validation + frac_test,
+                                       stratify=data_df['stratify_col'],
+                                       random_state=seed)
 
-    validation_df, test_df = train_test_split(remaining_df,
-                                              test_size=frac_test / (frac_validation + frac_test),
-                                              stratify=remaining_df['stratify_col'],
-                                              random_state=seed)
+    _, test_df = train_test_split(remaining_df,
+                                  test_size=frac_test / (frac_validation + frac_test),
+                                  stratify=remaining_df['stratify_col'],
+                                  random_state=seed)
 
     test_df = test_df.drop(columns='stratify_col')
 
@@ -56,8 +55,9 @@ def load_test_data(data_path: str, seed: int, frac_train: float, frac_validation
     return test_dataset
 
 
-def load_model(device, model_path, in_features=333, out_features=1, num_edge_features=16,
-               hidden_size=64, num_layers=3, num_attn_heads=4, dropout=0.2, pooling_dropout=0.2, pooling_dim=128):
+def load_model(device: torch.device, model_path: str, in_features: int = 333, out_features: int = 1,
+               num_edge_features: int = 16, hidden_size: int = 64, num_layers: int = 3, num_attn_heads: int = 4,
+               dropout: float = 0.2, pooling_dropout: float = 0.2, pooling_dim: int = 128) -> None:
     """
     Initializes the model with the given parameters, loads saved weights,
     and returns the model in evaluation mode.
@@ -83,7 +83,7 @@ def load_model(device, model_path, in_features=333, out_features=1, num_edge_fea
     return model
 
 
-def evaluate_model(model: nn.Module, test_loader: DataLoader, deveice: torch.device, huber_beta: float) -> tuple:
+def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float) -> tuple:
     """
     Evaluates the model on the test dataset, computes loss and classification metrics.
     """
@@ -95,7 +95,7 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, deveice: torch.dev
     with torch.no_grad():
         for batch in test_loader:
             node_features, edge_features, adjacency_matrix, pchembl_scores = [
-                x.to(torch.float32).to(device) for x in batch
+                x.to(torch.float32).to(DEVICE) for x in batch
             ]
             preds = model(node_features, edge_features, adjacency_matrix).squeeze(-1)
             loss = criterion(preds, pchembl_scores)
@@ -108,8 +108,8 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, deveice: torch.dev
     all_labels = np.array(all_labels)
 
     # Convert continuous predictions to binary based on threshold
-    binary_preds = (all_preds >= pCHEMBL_THRESHOLD).astype(int)
-    binary_labels = (all_labels >= pCHEMBL_THRESHOLD).astype(int)
+    binary_preds = (all_preds >= PCHEMBL_THRESHOLD).astype(int)
+    binary_labels = (all_labels >= PCHEMBL_THRESHOLD).astype(int)
 
     # Compute classification metrics
     accuracy = accuracy_score(binary_labels, binary_preds)
@@ -133,7 +133,8 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, deveice: torch.dev
     return metrics, binary_labels, all_preds
 
 
-def main():
+def main() -> None:
+    """Add training arguments and run the benchmark on the model."""
     parser = argparse.ArgumentParser(description="Evaluate the Graph Attention Network model.")
     parser.add_argument("--data_path", type=str, default="data", help="Path to the data folder")
     parser.add_argument("--model_path", type=str, default="models/model.pth", help="Path to the saved model weights")
@@ -161,7 +162,7 @@ def main():
     set_seeds()
 
     model = load_model(
-        device, args.model_path,
+        DEVICE, args.model_path,
         in_features=args.in_features,
         out_features=args.out_features,
         num_edge_features=args.num_edge_features,
@@ -177,7 +178,6 @@ def main():
     test_dataset = load_test_data(
         args.data_path,
         args.seed,
-        frac_train=args.frac_train,
         frac_validation=args.frac_validation,
         frac_test=args.frac_test,
         use_small_dataset=args.use_small_dataset
@@ -185,7 +185,7 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
     # Evaluate the model
-    metrics, binary_labels, all_preds = evaluate_model(model, test_loader, device, args.huber_beta)
+    metrics, _, _ = evaluate_model(model, test_loader, args.huber_beta)
 
     print("\n--- Evaluation Metrics ---")
     for metric, value in metrics.items():
@@ -193,4 +193,34 @@ def main():
 
 
 if __name__ == "__main__":
+    import python_ta
+    python_ta.check_all(config={
+        'extra-imports': [
+            'numpy',
+            'pandas',
+            'sklearn.model_selection',
+            'sklearn.metrics',
+            'rdkit',
+            'xgboost',
+            'rdkit.Chem.rdFingerprintGenerator',
+            'Chem.MolFromSmiles',
+            'DataStructs.ConvertToNumpyArray',
+            'math',
+            'torch',
+            'torch.nn',
+            'torch.nn.functional',
+            'torch.utils.data',
+            'argparse',
+            'src.model',
+            'src.utils.dataset',
+            'src.utils.helper_functions'
+        ],
+        'disable': ['R0914', 'E1101', 'R0913', 'R0902', 'E9959'],  
+        # R0914 for local variable, E1101 for attributes for imported modules
+        # R0913 for arguments, R0902 for instance attributes in class
+        # E9959 for instance annotation
+        'allowed-io': ['main', 'load_model'],
+        'max-line-length': 120,
+    })
+
     main()
