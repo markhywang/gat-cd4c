@@ -493,9 +493,10 @@ class MoleculeViewer(tk.Frame):
         self.tk_widgets['node_contributions_mode'] = tk.IntVar()
         self.tk_widgets['functional_groups_mode'] = tk.IntVar()
 
-        node_contributions_checkbox = tk.Checkbutton(self.tk_widgets['settings_frame'], text="Show Node Contributons",
-                                                     variable=self.tk_widgets['node_contributions_mode'],
-                                                     command=lambda: self._toggle_mode('node_contributions'))
+        node_contributions_checkbox = tk.Checkbutton(
+            self.tk_widgets['settings_frame'], text="Show Node Contributons",
+            variable=self.tk_widgets['node_contributions_mode'],
+            command=lambda: self._toggle_mode('node_contributions'))
         node_contributions_checkbox.pack(pady=(20, 0))
 
         tk.Label(self.tk_widgets['settings_frame'], text="Display Intensity").pack()
@@ -504,9 +505,13 @@ class MoleculeViewer(tk.Frame):
         self.tk_widgets['node_contributions_intensity_slider'].set(0.4)
         self.tk_widgets['node_contributions_intensity_slider'].pack()
 
-        functional_groups_checkbox = tk.Checkbutton(self.tk_widgets['settings_frame'], text="Show Functional Groups",
-                                                    variable=self.tk_widgets['functional_groups_mode'],
-                                                    command=lambda: self._toggle_mode('functional_groups'))
+        functional_groups_checkbox = tk.Checkbutton(
+            self.tk_widgets['settings_frame'],
+            text="Show Functional Groups",
+            variable=self.tk_widgets['functional_groups_mode'],
+            command=lambda: self._toggle_mode('functional_groups'),
+        )
+
         functional_groups_checkbox.pack(pady=(20, 0))
 
         self._create_functional_group_settings()
