@@ -1,3 +1,9 @@
+"""
+This module contains the necessary datasets for the project.
+More specifically, it has the main DrugProtein dataset, which contains specific DrugMolecules.
+Note that DrugMolecules has additional helper functions to aid in both pre-training and for graph visualizations.
+"""
+
 import rdkit.Chem
 from rdkit import Chem
 from typing import Any
@@ -8,11 +14,36 @@ import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 
-from .functional_groups import *
+from functional_groups import *
 
 
 class DrugMolecule:
+    """
+    Represents a drug molecule and its molecular graph structure.
+    
+    Instance Attributes:
+        mol: The RDKit molecule object representing the drug.
+        node_features: A list containing feature dictionaries for each atom in the molecule.
+        edge_features: A dictionary mapping bond pairs to their respective feature dictionaries.
+        adjacency_list: A list of tuples representing undirected adjacency relationships between atoms.
+        neighbours: A list where each index corresponds to an atom and contains a list of its neighboring atom indices.
+        num_nodes: The total number of atoms in the molecule.
+        node_tensor: A tensor representation of the node features.
+        edge_tensor: A tensor representation of the edge features.
+        adjacency_tensor: A tensor representation of the adjacency matrix.
+    """
+    mol: rdkit.Chem.Mol
+    node_features: list[Any]
+    edge_features: dict[Any, Any]
+    adjacency_list: list[Any]
+    neighbours: list[list[int]]
+    num_nodes: int
+    node_tensor: torch.Tensor
+    edge_tensor: torch.Tensor
+    adjacency_tensor: torch.Tensor
+
     def __init__(self, smiles_str: str) -> None:
+        """Initializes a DrugMolecule by constructing its molecular graph."""
         self.mol, self.node_features, self.edge_features, self.adjacency_list, self.neighbours = (
             self._construct_molecular_graph(smiles_str))
         self.num_nodes = len(self.node_features)
@@ -20,6 +51,7 @@ class DrugMolecule:
         self.node_tensor, self.edge_tensor, self.adjacency_tensor = self._tensor_preprocess()
 
     def find_functional_group(self, functional_group: FunctionalGroup) -> list[dict[int, int]]:
+        """Finds occurrences of a specified functional group within the molecule."""
         root_node_specs = functional_group.get_root_node_specs()
         final_found_dicts = []
         for node_num, node_specs in enumerate(self.node_features):
@@ -33,6 +65,7 @@ class DrugMolecule:
 
     def _functional_group_helper(self, functional_group: FunctionalGroup, node: int,
                                  found_dict: dict[int, int]) -> list[dict[int, int]]:
+        """Recursively finds matching subgraphs corresponding to a functional group."""
         drug_node = found_dict[node]
         functional_group_neighbours = functional_group.neighbours[node]
         # Create a dictionary that tracks the options for drug nodes that can be used for a given
@@ -98,6 +131,7 @@ class DrugMolecule:
         return final_found_dicts
 
     def _get_unique_combinations(self, options_dict: dict[Any, list]) -> list[dict[Any, Any]]:
+        """Given a dict, generate all possible combinations while filtering out duplicates."""
         keys, values = zip(*sorted(options_dict.items()))  # Extract keys and ordered value lists
         all_combinations = product(*values)  # Generate all possible combinations
 
@@ -109,6 +143,7 @@ class DrugMolecule:
         return unique_dicts
 
     def _check_features_match(self, features_to_check: dict[Any, Any], curr_features: dict[Any, Any]) -> bool:
+        """Given current features and the features to check, check if the nodes matches all specifications"""
         # Check if the current node matches all the specifications.
         for key, val in features_to_check.items():
             if curr_features[key] != val:
@@ -117,6 +152,7 @@ class DrugMolecule:
 
     def _construct_molecular_graph(self, smiles_str: str) \
             -> tuple[rdkit.Chem.Mol, list[Any], dict[Any, Any], list[Any], list[list[int]]]:
+        """Construct the molecular graph given atoms and bonds."""
         mol = Chem.RemoveHs(Chem.MolFromSmiles(smiles_str))  # remove explicit H atoms
 
         node_features = []
@@ -153,6 +189,7 @@ class DrugMolecule:
         return mol, node_features, edge_features, adjacency_list, neighbours
 
     def _tensor_preprocess(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Pre-process PyTorch tensors to be eventually passed as input to GAT"""
         processed_node_features = []
         for features in self.node_features:
             processed_node_features.append(self._process_node_features(features))
@@ -183,7 +220,7 @@ class DrugMolecule:
         return node_tensor, edge_tensor, adjacency_tensor
 
     def _pad_tensor(self, x: torch.Tensor, dims: list[int], size_after_padding: int = 50) -> torch.Tensor:
-        # Pad the tensors so that every dimension passed in has a size of size_after_padding.
+        """Pad the tensors so that every dimension passed in has a size of size_after_padding."""
         padding_list = []
         for i in range(len(x.shape)-1, -1, -1):
             if i in dims:
@@ -197,6 +234,7 @@ class DrugMolecule:
         return F.pad(x, tuple(padding_list), mode='constant', value=0)
 
     def _process_node_features(self, features: dict[str, int | str]) -> list[int]:
+        """Process node features and encode necessary attributes."""
         hybridization_encoder_dict = {
             "UNSPECIFIED": 0, "S": 1, "SP": 2, "SP2": 3, "SP3": 4,
             "SP2D": 5, "SP3D": 6, "SP3D2": 7, "OTHER": 8
@@ -226,6 +264,7 @@ class DrugMolecule:
         return processed_features
 
     def _process_edge_features(self, features: dict[str, int | str]) -> list[int]:
+        """Process edge features and encode necessary attributes."""
         bond_type_encoder_dict = {
             "UNSPECIFIED": 0, "SINGLE": 1, "DOUBLE": 2, "TRIPLE": 3, "AROMATIC": 4,
             "IONIC": 5, "HYDROGEN": 6, "THREECENTER": 7, "DATIVEONE": 8,
@@ -244,7 +283,26 @@ class DrugMolecule:
 
 
 class DrugProteinDataset(Dataset):
+    """
+    A PyTorch Dataset representing drug-protein interaction data.
+    
+    Instance Attributes:
+        size: The total number of samples in the dataset.
+        pchembl_scores: A list of pChEMBL activity values for each sample.
+        protein_ids: A list of protein target identifiers for each sample.
+        smiles_strs: A list of SMILES representations of drug molecules.
+        protein_embeddings_dict: A dictionary mapping protein target IDs to their corresponding tensor embeddings.
+        drug_graphs: A lazy-loaded list of DrugMolecule objects corresponding to the drugs in the dataset.
+    """
+    size: int
+    pcheml_scores: list
+    protein_ids: list
+    smiles_strs: list
+    protein_embeddings_dict: dict
+    drug_graphs: list
+
     def __init__(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame) -> None:
+        """Initializes the dataset by processing input data frames."""
         super().__init__()
 
         self.size = data_df.shape[0]
@@ -260,9 +318,11 @@ class DrugProteinDataset(Dataset):
         self.drug_graphs = [None] * self.size
 
     def __len__(self):
+        """Returns the number of samples in the dataset."""
         return self.size
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+        """Retrieves a single data sample, including drug and protein representations."""
         drug_graph = self.drug_graphs[idx]
         if drug_graph is None:
             drug_graph = DrugMolecule(self.smiles_strs[idx])
@@ -281,3 +341,26 @@ class DrugProteinDataset(Dataset):
             (node_features, reshaped_protein_embedding), dim=-1)
 
         return node_features, edge_features, adjacency_matrix, pchembl_score
+
+
+if __name__ == '__main__':
+    import python_ta
+
+    # Did not work for us (maybe PythonTA has a bug)
+    # AttributeError: 'ClassDef' object has no attribute 'value'. Did you mean: 'values'?
+    python_ta.check_all(config={
+        'extra-imports': [
+            'rdkit.Chem',
+            'rdkit',
+            'typing',
+            'pandas',
+            'itertools',
+            'torch',
+            'torch.utils.data',
+            'torch.nn.functional',
+            'src.utils.functional_groups',
+        ],
+        'disable': ['R0914', 'E1101'],  # R0914 for local variable, E1101 for attributes for imported modules
+        'allowed-io': [],
+        'max-line-length': 120,
+    })
