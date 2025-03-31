@@ -1,51 +1,92 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+"""Module for implementing Graph Attention Networks (GAT) components."""
+
 import math
+import torch
+from torch import nn
+import torch.nn.functional as F
 
 
 class GraphAttentionNetwork(nn.Module):
-    def __init__(self, device, in_features: int, out_features: int, num_edge_features: int, hidden_size: int,
-                 num_layers: int, num_attn_heads: int, dropout: float, pooling_dropout: float, pooling_dim: int) -> None:
+    """Graph Attention Network for learningh node representations and predicting pCHEMBL scores.
+    
+    Instance Attributes:
+        - device: The device to peform computations.
+        - in_features: Dimension of input node features.
+        - out_features: Dimension of output node features.
+        - num_edge_features: Dimension of edge features.
+        - hidden_size: Hidden dimension for intermediate layers.
+        - num_layers: Number of GAT layers.
+        - num_attn_heads: Number of attention heads.
+        - dropout: Dropout probability used in GAT layers.
+        - pooling_dropout: Dropout probability for the global pooling layer.
+        - pooling_dim: Hidden dimension for the global attention pooling layer.
+    """
+    gat_layers: nn.Module
+    global_attn_pooling: nn.Module
+
+    def __init__(self, device: torch.device, in_features: int, out_features: int, num_edge_features: int,
+                 hidden_size: int, num_layers: int, num_attn_heads: int, dropout: float, pooling_dropout: float,
+                 pooling_dim: int) -> None:
         super().__init__()
 
         if num_layers == 1:
-            layers = [GraphAttentionLayer(device, in_features, out_features, 
+            layers = [GraphAttentionLayer(device, in_features, out_features,
                                           num_edge_features, dropout, use_leaky_relu=False)]
         else:
-            layers = [GraphAttentionLayer(device, in_features, hidden_size, 
+            layers = [GraphAttentionLayer(device, in_features, hidden_size,
                                           num_edge_features, num_attn_heads, dropout=dropout)]
 
-            for i in range(num_layers - 2):
-                layers.append(GraphAttentionLayer(device, hidden_size, hidden_size, 
+            for _ in range(num_layers - 2):
+                layers.append(GraphAttentionLayer(device, hidden_size, hidden_size,
                                                   num_edge_features, num_attn_heads, dropout=dropout))
 
-            layers.append(GraphAttentionLayer(device, hidden_size, out_features, 
-                                              num_edge_features, num_attn_heads=1, dropout=dropout, use_leaky_relu=False))
+            layers.append(GraphAttentionLayer(device, hidden_size, out_features,
+                                              num_edge_features, num_attn_heads=1,
+                                              dropout=dropout, use_leaky_relu=False))
 
         self.gat_layers = nn.Sequential(*layers)
         self.global_attn_pooling = GlobalAttentionPooling(out_features, 1, pooling_dim, dropout=pooling_dropout)
 
-    def forward(self, node_features, edge_features, adjacency_matrix) -> torch.Tensor:
+    def forward(self, node_features: torch.Tensor, edge_features: torch.Tensor,
+                adjacency_matrix: torch.Tensor) -> torch.Tensor:
+        """Compute and forward pass of the GAT
+        
+        Instance Attributes:
+            - node_features: Tensor of shape [B, N, F_in] representing node features.
+            - edge_features: Tensor of shape [B, N, N, F_edge] representing edge features.
+            - adjacency_matrix: Tensor of shape [B, N, N] representing the adjacency matrix.
+        """
         # Initial node feature shape: [B, N, F_in]
         input_tuple = (node_features, edge_features, adjacency_matrix)
 
         # [B, N, F_in] -> [B, N, F_out]
-        updated_node_features, _, _ = self.gat_layers(input_tuple)
+        updated_node_features = self.gat_layers(input_tuple)[0]
 
         # Perform global attention pooling for final learning process
         # [B, N, F_out] -> [B, 1]
         pchembl_scores = self.global_attn_pooling(updated_node_features)
 
         # Normalize pChEMBL scores into the range (0, 14) using sigmoid
-        pchembl_scores = 7 * (torch.tanh(pchembl_scores) + 1)
+        pchembl_scores = 14 * torch.sigmoid(pchembl_scores)
 
         # Final shape: [B, 1]
         return pchembl_scores
 
 
 class GlobalAttentionPooling(nn.Module):
-    def __init__(self, in_features: int, out_features: int = 1, hidden_dim: int = 128, dropout: int = 0.2) -> None:
+    """Global attention pooling layer for aggregating node features.
+    
+    Instance Attributes:
+        - in_features: Dimension of input features.
+        - out_features: Dimension of output features. Defaults to 1.
+        - hidden_dim: Hidden dimension for the projection. Defaults to 128.
+        - dropout: Dropout probability. Defaults to 0.2.
+    """
+    global_attn: nn.Module
+    final_projection: nn.Module
+    dropout: float
+
+    def __init__(self, in_features: int, out_features: int = 1, hidden_dim: int = 128, dropout: float = 0.2) -> None:
         super().__init__()
 
         self.global_attn = nn.Linear(in_features, 1)
@@ -81,8 +122,35 @@ class GlobalAttentionPooling(nn.Module):
 
 
 class GraphAttentionLayer(nn.Module):
-    def __init__(self, device, in_features: int, out_features: int,
-                 num_edge_features: int, num_attn_heads: int = 1, dropout: int = 0.2, use_leaky_relu: bool = True) -> None:
+    """Single Graph attention layer for performing message passing on graph.
+    
+    Instance Attributes:
+        - device (torch.device): The device to perform computations on.
+        - in_features (int): Dimension of input node features.
+        - out_features (int): Dimension of output node features.
+        - num_edge_features (int): Dimension of edge features.
+        - num_attn_heads (int, optional): Number of attention heads. Defaults to 1.
+        - dropout (int, optional): Dropout probability. Defaults to 0.2.
+        - use_leaky_relu (bool, optional): Whether to use LeakyReLU activation. Defaults to True.
+    """
+    device: torch.device
+    node_projection: nn.Module
+    layer_norm_1: nn.Module
+    layer_norm_2: nn.Module
+    edge_mlp: nn.Module
+    use_leaky_relu: bool
+    leaky_relu: nn.Module
+    num_attn_heads: int
+    head_size: int
+    attn_matrix: nn.Module
+    attn_leaky_relu: nn.Module
+    out_node_projection: nn.Module
+    dropout: nn.Module
+    residual_proj: nn.Module
+
+    def __init__(self, device: torch.device, in_features: int, out_features: int,
+                 num_edge_features: int, num_attn_heads: int = 1, dropout: float = 0.2,
+                 use_leaky_relu: bool = True) -> None:
         super().__init__()
         self.device = device
 
@@ -121,9 +189,10 @@ class GraphAttentionLayer(nn.Module):
 
     def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) \
             -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute the forward pass of the graph attention layer."""
         # Initial node_features shape: [B, N, F_in]
         node_features, edge_features, adjacency_matrix = [t.to(self.device) for t in x]
-        batch_size, num_nodes, num_node_features = node_features.shape
+        batch_size, num_nodes, _ = node_features.shape
 
         # Save node and edge residual for later addition.
         node_residual = node_features
@@ -221,3 +290,30 @@ class GraphAttentionLayer(nn.Module):
         # Concatenate output for different attention heads together.
         # [B, N, num_heads, F_out // num_heads] -> [B, N, F_out]
         return new_node_features.view(batch_size, num_nodes, -1)
+
+
+if __name__ == '__main__':
+    import python_ta
+    python_ta.check_all(config={
+        'extra-imports': [
+            'numpy',
+            'pandas',
+            'sklearn.model_selection',
+            'sklearn.metrics',
+            'rdkit',
+            'xgboost',
+            'rdkit.Chem.rdFingerprintGenerator',
+            'Chem.MolFromSmiles',
+            'DataStructs.ConvertToNumpyArray',
+            'math',
+            'torch',
+            'torch.nn',
+            'torch.nn.functional'
+        ],
+        'disable': ['R0914', 'E1101', 'R0913', 'R0902', 'E9959'],  
+        # R0914 for local variable, E1101 for attributes for imported modules
+        # R0913 for arguments, R0902 for instance attributes in class
+        # E9959 for instance annotation
+        'allowed-io': ['main'],
+        'max-line-length': 120,
+    })
