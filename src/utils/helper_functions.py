@@ -267,3 +267,8 @@ def plot_preds_vs_labels(preds: torch.Tensor, labels: torch.Tensor) -> None:
     plt.legend()
     plt.grid(True)
     plt.show()
+
+def get_r_squared(preds: np.ndarray, labels: np.ndarray) -> float:
+    ss_res = np.sum((preds - labels) ** 2)  # Residual sum of squares
+    ss_tot = np.sum((labels - np.mean(labels)) ** 2)  # Total sum of squares
+    return 1 - (ss_res / ss_tot)
