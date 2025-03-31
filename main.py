@@ -21,10 +21,11 @@ import io
 from PIL import Image
 from sklearn.model_selection import train_test_split
 
-from utils.dataset import DrugProteinDataset, DrugMolecule
-from utils.helper_functions import set_seeds
-from utils.functional_groups import *
-from model import GraphAttentionNetwork
+# Local imports
+from src.utils.dataset import DrugProteinDataset, DrugMolecule
+from src.utils.helper_functions import set_seeds
+from src.utils.functional_groups import *
+from src.model import GraphAttentionNetwork
 
 
 class AnalysisApp(tk.Tk):
@@ -49,7 +50,7 @@ class AnalysisApp(tk.Tk):
             96
         ).to(torch.float32).to("cpu")
         self.model.load_state_dict(
-            torch.load("../models/model.pth", weights_only=False, map_location=torch.device('cpu')))
+            torch.load("models/model.pth", weights_only=False, map_location=torch.device('cpu')))
         self.model.eval()
 
         self.notebook = ttk.Notebook(self)
@@ -579,7 +580,7 @@ def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 if __name__ == '__main__':
     set_seeds()
-    app = AnalysisApp('../data')
+    app = AnalysisApp('data')
     app.mainloop()
 
     import python_ta
