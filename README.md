@@ -1,5 +1,4 @@
-# IMPORTANT: YOU MUST UNZIP THE FILE AND RUN main.py FROM INSIDE gat-cd4c.
-
+IMPORTANT: YOU MUST UNZIP THE FILE AND RUN main.py FROM INSIDE gat-cd4c/src.
 
 # Graph Attention Network for Drug-Target Interaction Prediction
 
