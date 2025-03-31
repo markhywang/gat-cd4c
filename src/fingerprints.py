@@ -115,6 +115,14 @@ def main() -> None:
     test_preds = xgb_model.predict(test_x)
 
     # Compute regression metrics
+    train_roc = metrics.roc_auc_score((train_y >= 7.0).astype(int), (train_preds >= 7.0).astype(int))
+    val_roc = metrics.roc_auc_score((val_y >= 7.0).astype(int), (val_preds >= 7.0).astype(int))
+    test_roc = metrics.roc_auc_score((test_y >= 7.0).astype(int), (test_preds >= 7.0).astype(int))
+
+    train_mae = metrics.mean_absolute_error(train_y, train_preds)
+    val_mae = metrics.mean_absolute_error(val_y, val_preds)
+    test_mae = metrics.mean_absolute_error(test_y, test_preds)
+
     train_mse = metrics.mean_squared_error(train_y, train_preds)
     val_mse = metrics.mean_squared_error(val_y, val_preds)
     test_mse = metrics.mean_squared_error(test_y, test_preds)
@@ -129,9 +137,11 @@ def main() -> None:
     test_acc = compute_accuracy(test_preds, test_y, threshold=1.0)
 
     print("XGBoost Model Performance:")
+    print(f"Train MAE: {train_mae:.5f}, Val MAE: {val_mae:.5f}, Test MAE: {test_mae:.5f}")
     print(f"Train MSE: {train_mse:.5f}, Val MSE: {val_mse:.5f}, Test MSE: {test_mse:.5f}")
     print(f"Train R²: {train_r2:.5f}, Val R²: {val_r2:.5f}, Test R²: {test_r2:.5f}")
     print(f"Train Accuracy: {train_acc:.5f}, Val Accuracy: {val_acc:.5f}, Test Accuracy: {test_acc:.5f}")
+    print(f"Train AUC: {train_roc:.5f}, Val AUC: {val_roc:.5f}, Test AUC: {test_roc:.5f}")
 
 
 if __name__ == '__main__':

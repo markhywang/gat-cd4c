@@ -12,6 +12,9 @@ from sklearn.metrics import (
     f1_score,
     precision_score,
     recall_score,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
     roc_auc_score,
 )
 
@@ -113,6 +116,9 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
     # Compute classification metrics
     accuracy = accuracy_func(all_labels, all_preds, 1.0) / len(all_labels)
     f1 = f1_score(binary_labels, binary_preds)
+    mae = mean_absolute_error(all_labels, all_preds)
+    mse = mean_squared_error(all_labels, all_preds)
+    r2 = r2_score(all_labels, all_preds)
     precision = precision_score(binary_labels, binary_preds)
     recall = recall_score(binary_labels, binary_preds)
     try:
@@ -123,6 +129,9 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
     metrics = {
         "avg_loss": avg_loss,
         "accuracy": accuracy,
+        "mae": mae,
+        "mse": mse,
+        "r2": r2,
         "f1": f1,
         "precision": precision,
         "recall": recall,
@@ -138,7 +147,7 @@ def main() -> None:
     parser.add_argument("--data_path", type=str, default="data", help="Path to the data folder")
     parser.add_argument("--model_path", type=str, default="models/model.pth", help="Path to the saved model weights")
     parser.add_argument("--use_small_dataset", action="store_true", help="Use small dataset")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size for DataLoader")
     parser.add_argument("--frac_train", type=float, default=0.7, help="Fraction of data for training split")
     parser.add_argument("--frac_validation", type=float, default=0.15, help="Fraction of data for validation split")
