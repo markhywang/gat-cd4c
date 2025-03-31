@@ -12,12 +12,15 @@ from sklearn.metrics import (
     f1_score,
     precision_score,
     recall_score,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
     roc_auc_score,
 )
 
 from src.model import GraphAttentionNetwork
 from src.utils.dataset import DrugProteinDataset
-from src.utils.helper_functions import set_seeds, accuracy_func, mae_func, mse_func
+from src.utils.helper_functions import set_seeds, accuracy_func
 
 # Set device
 DEVICE = torch.device("cpu")
@@ -113,8 +116,9 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
     # Compute classification metrics
     accuracy = accuracy_func(all_labels, all_preds, 1.0) / len(all_labels)
     f1 = f1_score(binary_labels, binary_preds)
-    mae = mae_func(all_labels, all_preds)
-    mse = mse_func(all_labels, all_preds)
+    mae = mean_absolute_error(all_labels, all_preds)
+    mse = mean_squared_error(all_labels, all_preds)
+    r2 = r2_score(all_labels, all_preds)
     precision = precision_score(binary_labels, binary_preds)
     recall = recall_score(binary_labels, binary_preds)
     try:
@@ -127,6 +131,7 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
         "accuracy": accuracy,
         "mae": mae,
         "mse": mse,
+        "r2": r2,
         "f1": f1,
         "precision": precision,
         "recall": recall,
