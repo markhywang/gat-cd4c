@@ -2,43 +2,38 @@ import tkinter as tk
 from tkinter import ttk
 
 import matplotlib.pyplot as plt
-import rdkit.Chem
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import Normalize
 
 from rdkit.Chem import AllChem
 from rdkit.Chem.Draw import rdMolDraw2D
+import rdkit.Chem
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
 
 import pandas as pd
 import numpy as np
-import torch
+import math
 import io
 from PIL import Image
+from sklearn.model_selection import train_test_split
 
 from utils.dataset import DrugProteinDataset
 from utils.helper_functions import set_seeds
 from model import GraphAttentionNetwork
 
 
-class MoleculeViewer(tk.Tk):
-    def __init__(self, data_path: str):
+class AnalysisApp(tk.Tk):
+    def __init__(self, data_path: str) -> None:
         super().__init__()
-
-        self.title("CD4C Molecule Viewer")
-        self.state("zoomed")
-        # Use a white background.
-        self.configure(bg="white")
-
-        # Make the 2nd and 3rd column.
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_columnconfigure(2, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+        self.title("CD4C Analysis")
+        self.state("normal")
 
         data_df, protein_embeddings_df = load_data(data_path)
-        self.dataset = DrugProteinDataset(data_df, protein_embeddings_df)
-
-        # TODO - remove hard-coded .pth file and model params
+        # TODO - remove hard-coded model parameters
         self.model = GraphAttentionNetwork(
             "cpu",
             349,
@@ -48,10 +43,233 @@ class MoleculeViewer(tk.Tk):
             7,
             6,
             0.0,
+            0.0,
             96
         ).to(torch.float32).to("cpu")
-        self.model.load_state_dict(torch.load("../models/model.pth", weights_only=False, map_location=torch.device('cpu')))
+        self.model.load_state_dict(
+            torch.load("../models/model.pth", weights_only=False, map_location=torch.device('cpu')))
         self.model.eval()
+
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(expand=True, fill="both")
+        # Increase the font size and padding for the tabs.
+        ttk.Style().configure("TNotebook.Tab", padding=[10, 5], font=("Arial", 10))
+
+        molecule_viewer = MoleculeViewer(self, data_df, protein_embeddings_df, self.model)
+        self.notebook.add(molecule_viewer, text="Molecule Viewer")
+
+        model_analysis = ModelAnalysis(self, data_df, protein_embeddings_df, self.model)
+        self.notebook.add(model_analysis, text="Model Analysis")
+
+
+class ModelAnalysis(tk.Frame):
+    def __init__(self, root: tk.Tk, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame,
+                 model: nn.Module) -> None:
+        super().__init__(root)
+
+        # Use a white background.
+        self.configure(bg="white")
+
+        self.model = model
+        self.data_df = data_df
+        self.protein_embeddings_df = protein_embeddings_df
+        self._create_settings_frame()
+
+        self.bind("<Destroy>", self._on_destroy)
+        self.confusion_plot = None
+        self.confusion_canvas = None
+        self.scatter_plot = None
+        self.scatter_canvas = None
+
+    def _on_destroy(self, event) -> None:
+        if self.confusion_plot is not None:
+            plt.close(self.confusion_plot)
+        if self.scatter_plot is not None:
+            plt.close(self.scatter_plot)
+
+    def _update_display(self) -> None:
+        self.test_dataset = self._get_test_dataset(self.data_df, self.protein_embeddings_df)
+        self.pchembl_preds, self.pchembl_labels = self._eval_model(self.percent_data_slider.get())
+
+        if self.confusion_plot is not None:
+            self.confusion_canvas.get_tk_widget().destroy()
+            plt.close(self.confusion_plot)
+        if self.scatter_plot is not None:
+            self.scatter_canvas.get_tk_widget().destroy()
+            plt.close(self.scatter_plot)
+
+        self._update_confusion_matrix()
+        self._update_scatter()
+
+    def _create_settings_frame(self):
+        settings_frame = tk.Frame(self, padx=5, pady=5)
+
+        # Create a slider that controls the percentage of test data that is used to do the analysis.
+        tk.Label(settings_frame, text="% Data Used for Analysis").grid(row=0, column=0, padx=20, pady=(20, 0))
+        # Create a slider that controls the percentage of test data that is used to do the analysis.
+        self.percent_data_slider = tk.Scale(settings_frame, from_=0.05, to=1.0, resolution=0.05, orient="horizontal")
+        self.percent_data_slider.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+
+        generate_button = tk.Button(settings_frame, text="Generate Analysis", command=self._update_display)
+        generate_button.grid(row=0, column=1, rowspan=2, padx=20, pady=20)
+
+        settings_frame.grid(row=0, column=0, padx=20, pady=20, sticky='w')
+
+    def _update_confusion_matrix(self):
+        confusion_dict = self._get_confusion_dict()
+        self.confusion_plot = self._plot_confusion_matrix(confusion_dict)
+
+        # Embed the plot into the Tkinter frame.
+        self.confusion_canvas = FigureCanvasTkAgg(self.confusion_plot, master=self)
+        self.confusion_canvas.draw()
+        self.confusion_canvas.get_tk_widget().config(width=500, height=400)
+        self.confusion_canvas.get_tk_widget().grid(row=1, column=0, padx=20, pady=20)
+
+    def _plot_confusion_matrix(self, confusion_dict: dict[str, float]) -> plt.Figure:
+        # Extract values from the dictionary.
+        tp = confusion_dict['true_positive']
+        fp = confusion_dict['false_positive']
+        tn = confusion_dict['true_negative']
+        fn = confusion_dict['false_negative']
+
+        # Construct the confusion matrix.
+        matrix = np.array([[tp, fp], [fn, tn]])
+
+        # Normalize by total values for color scaling.
+        matrix_norm = matrix.astype('float') / matrix.sum()
+
+        # Create the plot.
+        fig, ax = plt.subplots(figsize=(4, 4))
+
+        # Add a color bar on the right side that uses different shades of blue.
+        cax = ax.matshow(matrix_norm, cmap='Blues')
+        plt.colorbar(cax, shrink=0.8)
+
+        # Set tick positions and labels.
+        ax.set_xticks([0, 1])
+        ax.set_yticks([0, 1])
+        ax.set_xticklabels(['Predicted Positive', 'Predicted Negative'], fontsize=8)
+        ax.set_yticklabels(['Actual\nPositive', 'Actual\nNegative'], fontsize=8)
+
+        # Annotate each cell with its value.
+        for i in range(2):
+            for j in range(2):
+                plt.text(j, i, f"{matrix[i, j]}", ha='center', va='center', color='black', fontsize=12)
+
+        plt.title("Confusion Matrix", fontsize=16, pad=30)
+
+        # Automatically adjust subplots to fit into the figure area.
+        fig.tight_layout()
+
+        return fig
+
+    def _update_scatter(self):
+        self.scatter_plot = self._plot_scatter(self.pchembl_preds, self.pchembl_labels)
+
+        # Embed the plot into the Tkinter frame.
+        self.scatter_canvas = FigureCanvasTkAgg(self.scatter_plot, master=self)
+        self.scatter_canvas.draw()
+        self.scatter_canvas.get_tk_widget().config(width=500, height=400)
+        self.scatter_canvas.get_tk_widget().grid(row=1, column=1, padx=20, pady=20)
+
+    def _plot_scatter(self, preds: torch.Tensor, labels: torch.Tensor) -> plt.Figure:
+        preds = preds.cpu().detach().numpy()
+        labels = labels.cpu().detach().numpy()
+
+        # Create the plot.
+        fig, ax = plt.subplots(figsize=(4, 4))
+
+        plt.scatter(labels, preds, alpha=0.5, label='Predictions')
+        plt.title("pChEMBL Predictions", fontsize=16, pad=20)
+
+        # Plot the y = x line
+        min_val = min(labels.min(), preds.min())
+        max_val = max(labels.max(), preds.max())
+        plt.plot([min_val, max_val], [min_val, max_val], 'r--', label='y = x')
+
+        plt.xlabel('Actual pChEMBL Score')
+        plt.ylabel('Predicted pChEMBL Score')
+        plt.legend()
+        plt.grid(True)
+
+        # Automatically adjust subplots to fit into the figure area.
+        fig.tight_layout()
+
+        return fig
+
+    def _get_confusion_dict(self, pchembl_threshold: float = 7.0) -> dict[str, int]:
+        positive_preds = [x >= pchembl_threshold for x in self.pchembl_preds]
+        positive_labels = [x >= pchembl_threshold for x in self.pchembl_labels]
+        confusion_dict = {'true_positive': 0, 'false_positive': 0, 'true_negative': 0, 'false_negative': 0}
+
+        for pred, label in zip(positive_preds, positive_labels):
+            pred_str = 'positive' if pred else 'negative'
+            is_correct = 'true' if pred == label else 'false'
+            confusion_dict[f"{is_correct}_{pred_str}"] += 1;
+
+        return confusion_dict
+
+    def _eval_model(self, percent_data, batch_size: int = 50) -> tuple[torch.Tensor, torch.Tensor]:
+        assert 0 < percent_data <= 1
+
+        # Choose an arbitrary batch size to prevent input from utilizing too much RAM.
+        test_loader = DataLoader(self.test_dataset, batch_size=batch_size, shuffle=False)
+        # Calculate the target amount of data.
+        target_data_size = max(1, math.ceil(percent_data * len(self.test_dataset)))
+        # Calculate the number of batches that need to be processed to get the target amount of data.
+        num_batches = math.ceil(target_data_size / batch_size)
+
+        # Create an empty tensor that will contain the pChEMBL predictions.
+        pchembl_preds = torch.tensor([])
+        pchembl_labels = torch.tensor([])
+        for batch_num, batch in enumerate(test_loader):
+            node_features, edge_features, adjacency_matrix, pchembl_scores = [
+                x.to(torch.float32).to("cpu") for x in batch
+            ]
+            preds = self.model(node_features, edge_features, adjacency_matrix).squeeze(-1)
+            pchembl_preds = torch.cat((pchembl_preds, preds))
+            pchembl_labels = torch.cat((pchembl_labels, pchembl_scores))
+
+            if batch_num == num_batches - 1:
+                break
+
+        # Crop the data to the right size.
+        pchembl_preds = pchembl_preds[:target_data_size]
+        pchembl_labels = pchembl_labels[:target_data_size]
+        return pchembl_preds, pchembl_labels
+
+    def _get_test_dataset(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, seed: int = 42,
+                          frac_validation: float = 0.15, frac_test: float = 0.15) -> DrugProteinDataset:
+        data_df['stratify_col'] = data_df['Target_ID'] + "_" + data_df['label'].astype(str)
+        training_df, remaining_df = train_test_split(data_df,
+                                                     test_size=frac_validation + frac_test,
+                                                     stratify=data_df['stratify_col'],
+                                                     random_state=seed)
+        validation_df, test_df = train_test_split(remaining_df,
+                                                  test_size=frac_test / (frac_validation + frac_test),
+                                                  stratify=remaining_df['stratify_col'],
+                                                  random_state=seed)
+        test_df = test_df.drop(columns='stratify_col')
+        test_dataset = DrugProteinDataset(test_df, protein_embeddings_df)
+        return test_dataset
+
+
+class MoleculeViewer(tk.Frame):
+    def __init__(self, root: tk.Tk, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame,
+                 model: nn.Module) -> None:
+        super().__init__(root)
+
+        # Use a white background.
+        self.configure(bg="white")
+
+        # Make the 2nd and 3rd column the same size.
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(2, weight=1)
+        # Expand the first (and only) row across the entire window.
+        self.grid_rowconfigure(0, weight=1)
+
+        self.dataset = DrugProteinDataset(data_df, protein_embeddings_df)
+        self.model = model
 
         # Create a dictionary that maps the pair of ChEMBL IDs to the index of that entry.
         self.pair_to_idx_mapping = {}
@@ -139,17 +357,17 @@ class MoleculeViewer(tk.Tk):
 
         row = 0
         for label, value, newline in data:
-            label = tk.Message(self.info_frame, text=label, font=("Arial", 10, "bold"), anchor="w",
-                               width=280 if newline else 140)
-            label.grid(row=row, column=0, sticky="w", padx=5, pady=2, columnspan=2 if newline else 1)
-
             if newline:
+                label = tk.Message(self.info_frame, text=label, font=("Arial", 10, "bold"), anchor="w", width=280)
+                label.grid(row=row, column=0, sticky="w", padx=5, pady=(5, 0), columnspan=2)
                 value = tk.Message(self.info_frame, text=value, font=("Arial", 10), anchor="w", width=280)
-                value.grid(row=row + 1, column=0, sticky="w", padx=5, pady=2, columnspan=2)
+                value.grid(row=row + 1, column=0, sticky="w", padx=5, pady=(0, 5), columnspan=2)
                 row += 2
             else:
+                label = tk.Message(self.info_frame, text=label, font=("Arial", 10, "bold"), anchor="w", width=140)
+                label.grid(row=row, column=0, sticky="w", padx=5, pady=5, columnspan=1)
                 value = tk.Message(self.info_frame, text=value, font=("Arial", 10), anchor="w", width=140)
-                value.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+                value.grid(row=row, column=1, sticky="w", padx=5, pady=5)
                 row += 1
 
     def _update_drug_dropdown(self, event: tk.Event = None) -> None:
@@ -282,5 +500,5 @@ def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 if __name__ == '__main__':
     set_seeds()
-    viewer = MoleculeViewer('../data')
-    viewer.mainloop()
+    app = AnalysisApp('../data')
+    app.mainloop()
