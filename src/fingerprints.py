@@ -140,7 +140,7 @@ def main() -> None:
     print(f"Train MAE: {train_mae:.5f}, Val MAE: {val_mae:.5f}, Test MAE: {test_mae:.5f}")
     print(f"Train MSE: {train_mse:.5f}, Val MSE: {val_mse:.5f}, Test MSE: {test_mse:.5f}")
     print(f"Train R²: {train_r2:.5f}, Val R²: {val_r2:.5f}, Test R²: {test_r2:.5f}")
-    print(f"Train Accuracy: {train_acc:.5f}, Val Accuracy: {val_acc:.5f}, Test Accuracy: {test_acc:.5f}")
+    print(f"Train CPS: {train_acc:.5f}, Val CPS: {val_acc:.5f}, Test CPS: {test_acc:.5f}")
     print(f"Train AUC: {train_roc:.5f}, Val AUC: {val_roc:.5f}, Test AUC: {test_roc:.5f}")
 
 
