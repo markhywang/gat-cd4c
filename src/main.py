@@ -31,7 +31,7 @@ class AnalysisApp(tk.Tk):
     def __init__(self, data_path: str) -> None:
         super().__init__()
 
-        self.title("CD4C Analysis")
+        self.title("CandidateDrug4Cancer Analysis")
         self.state("normal")
 
         data_df, protein_embeddings_df = load_data(data_path)
@@ -181,12 +181,19 @@ class ModelAnalysis(tk.Frame):
         # Create the plot.
         fig, ax = plt.subplots(figsize=(4, 4))
 
-        plt.scatter(labels, preds, alpha=0.5, label='Predictions')
+        # Reduce point size from 10 to 1.
+        plt.scatter(labels, preds, alpha=0.5, label='Predictions', s=1)
         plt.title("pChEMBL Predictions", fontsize=16, pad=20)
 
-        # Plot the y = x line
         min_val = min(labels.min(), preds.min())
         max_val = max(labels.max(), preds.max())
+
+        # Plot a red highlight over all points that are within 1 of the y = x line.
+        close_pred_fill = np.linspace(min_val, max_val, 2)
+        plt.fill_between(close_pred_fill, close_pred_fill - 1, close_pred_fill + 1, color='red', alpha=0.1,
+                         label='Close Predictions (±1)')
+
+        # Plot the y = x line.
         plt.plot([min_val, max_val], [min_val, max_val], 'r--', label='y = x')
 
         plt.xlabel('Actual pChEMBL Score')
@@ -224,16 +231,17 @@ class ModelAnalysis(tk.Frame):
         # Create an empty tensor that will contain the pChEMBL predictions.
         pchembl_preds = torch.tensor([])
         pchembl_labels = torch.tensor([])
-        for batch_num, batch in enumerate(test_loader):
-            node_features, edge_features, adjacency_matrix, pchembl_scores = [
-                x.to(torch.float32).to("cpu") for x in batch
-            ]
-            preds = self.model(node_features, edge_features, adjacency_matrix).squeeze(-1)
-            pchembl_preds = torch.cat((pchembl_preds, preds))
-            pchembl_labels = torch.cat((pchembl_labels, pchembl_scores))
+        with torch.no_grad():
+            for batch_num, batch in enumerate(test_loader):
+                node_features, edge_features, adjacency_matrix, pchembl_scores = [
+                    x.to(torch.float32).to("cpu") for x in batch
+                ]
+                preds = self.model(node_features, edge_features, adjacency_matrix).squeeze(-1)
+                pchembl_preds = torch.cat((pchembl_preds, preds))
+                pchembl_labels = torch.cat((pchembl_labels, pchembl_scores))
 
-            if batch_num == num_batches - 1:
-                break
+                if batch_num == num_batches - 1:
+                    break
 
         # Crop the data to the right size.
         pchembl_preds = pchembl_preds[:target_data_size]
@@ -549,7 +557,8 @@ class MoleculeViewer(tk.Frame):
             adjacency_matrix[i, i, :] = 0.0
             adjacency_matrix[i, :, i] = 0.0
 
-        preds = self.model(node_features, edge_features, adjacency_matrix).squeeze(-1).tolist()
+        with torch.no_grad():
+            preds = self.model(node_features, edge_features, adjacency_matrix).squeeze(-1).tolist()
         # The real pChEMBL prediction uses the whole drug graph without masking any nodes.
         real_pred = preds.pop()
         node_contributions = []
@@ -563,8 +572,7 @@ class MoleculeViewer(tk.Frame):
 
 
 def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    # TODO - change to using filtered_cancer_all.csv dataset
-    data_df = pd.read_csv(f'{data_path}/filtered_cancer_small.csv')
+    data_df = pd.read_csv(f'{data_path}/filtered_cancer_all.csv')
     protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
     return data_df, protein_embeddings_df
 
