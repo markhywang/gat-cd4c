@@ -24,16 +24,14 @@ def load_data(data_path: str, seed: int = 42, frac_val: float = 0.1,
               frac_test: float = 0.1, use_small: bool = False) -> tuple:
     """
     Load and split the dataset into training, validation, and test sets along with protein embeddings.
+    Return a tuple containing (train_df, val_df, test_df, protein_embeddings_df).
 
-    Parameters:
+    Instance Attributes:
         data_path: Path to the directory containing data files.
         seed: Random seed for reproducibility.
         frac_val: Fraction of data to use for validation.
         frac_test: Fraction of data to use for testing.
         use_small: Whether to use a smaller dataset variant.
-
-    Returns:
-        A tuple containing (train_df, val_df, test_df, protein_embeddings_df).
     """
     dataset_file = 'filtered_cancer_small.csv' if use_small else 'filtered_cancer_all.csv'
     data_df = pd.read_csv(f'{data_path}/{dataset_file}')
@@ -65,14 +63,12 @@ def load_data(data_path: str, seed: int = 42, frac_val: float = 0.1,
 def compute_morgan_fp(smiles: str, radius: int = 2, n_bits: int = 2048) -> np.ndarray:
     """
     Compute the Morgan fingerprint for a given SMILES string using rdFingerprintGenerator.
+    Returns a numpy array representing the fingerprint.
 
-    Parameters:
+    Instance Attributes:
         smiles: A SMILES string representing the molecule.
         radius: The radius parameter for the Morgan fingerprint.
         n_bits: The size of the fingerprint.
-
-    Returns:
-        A numpy array representing the fingerprint.
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -127,12 +123,11 @@ def main() -> None:
     val_r2 = metrics.r2_score(val_y, val_preds)
     test_r2 = metrics.r2_score(test_y, test_preds)
 
-    # Compute accuracy (threshold-based)
+    # Compute accuracy based on threshold
     train_acc = compute_accuracy(train_preds, train_y, threshold=1.0)
     val_acc = compute_accuracy(val_preds, val_y, threshold=1.0)
     test_acc = compute_accuracy(test_preds, test_y, threshold=1.0)
 
-    # Output results (IO functions are flagged; disable warning with noqa)
     print("XGBoost Model Performance:")
     print(f"Train MSE: {train_mse:.5f}, Val MSE: {val_mse:.5f}, Test MSE: {test_mse:.5f}")
     print(f"Train R²: {train_r2:.5f}, Val R²: {val_r2:.5f}, Test R²: {test_r2:.5f}")
