@@ -42,10 +42,10 @@ class AnalysisApp(tk.Tk):
             1,
             16,
             96,
-            7,
+            8,
             6,
-            0.0,
-            0.0,
+            0.2,
+            0.1,
             96
         ).to(torch.float32).to("cpu")
         self.model.load_state_dict(
