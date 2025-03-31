@@ -281,8 +281,3 @@ class DrugProteinDataset(Dataset):
             (node_features, reshaped_protein_embedding), dim=-1)
 
         return node_features, edge_features, adjacency_matrix, pchembl_score
-
-
-if __name__ == "__main__":
-    drug_mol = DrugMolecule("CN(C)c1cccc2c(S(=O)(=O)N(C)C[C@H](C(=O)NO)[C@@H](CC3CCCC3)C(=O)N3CCCCC3)cccc12")
-    print(drug_mol.find_functional_group(Aldehyde()))

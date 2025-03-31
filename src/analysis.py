@@ -21,8 +21,9 @@ import io
 from PIL import Image
 from sklearn.model_selection import train_test_split
 
-from utils.dataset import DrugProteinDataset
+from utils.dataset import DrugProteinDataset, DrugMolecule
 from utils.helper_functions import set_seeds
+from utils.functional_groups import *
 from model import GraphAttentionNetwork
 
 
@@ -332,9 +333,56 @@ class MoleculeViewer(tk.Frame):
         self.drug_dropdown.pack(pady=(5, 20), padx=x_pad)
         self._update_drug_dropdown()
 
+        self._create_mode_settings()
+
         self.submit_button = tk.Button(self.settings_frame, text="Draw Molecule", font=font,
                                        command=self._update_display)
         self.submit_button.pack(padx=x_pad)
+
+    def _create_mode_settings(self):
+        # by default, show node contributions.
+        self.node_contributions_mode = tk.IntVar(value=1)
+        self.functional_groups_mode = tk.IntVar(value=0)
+
+        node_contributions_checkbox = tk.Checkbutton(self.settings_frame, text="Show Node Contributons",
+                                                     variable=self.node_contributions_mode,
+                                                     command=lambda: self._toggle_mode('node_contributions'))
+        node_contributions_checkbox.pack()
+
+        self.node_contributions_intensity_slider = tk.Scale(self.settings_frame, from_=0.1, to=0.7,
+                                                            resolution=0.05, orient="horizontal")
+        self.node_contributions_intensity_slider.set(0.4)
+        self.node_contributions_intensity_slider.pack()
+
+        functional_groups_checkbox = tk.Checkbutton(self.settings_frame, text="Show Functional Groups",
+                                                    variable=self.functional_groups_mode,
+                                                    command=lambda: self._toggle_mode('functional_groups'))
+        functional_groups_checkbox.pack()
+
+        self._create_functional_group_settings()
+
+    def _toggle_mode(self, selected_mode: str) -> None:
+        if selected_mode == 'node_contributions':
+            self.functional_groups_mode.set(0)
+        elif selected_mode == 'functional_groups':
+            self.node_contributions_mode.set(0)
+
+    def _create_functional_group_settings(self) -> None:
+        self.functional_groups = {'ketone': Ketone(), 'ether': Ether(), 'alcohol': Alcohol(), 'amine': Amine()}
+        self.functional_group_colors = {'ketone': "#0000FF", 'ether': "#800080",
+                                        'alcohol': "#FFA500", 'amine': "#8B4513"}
+        self.functional_group_color_schemes = {'ketone': "Blues", 'ether': "Purples",
+                                               'alcohol': "Oranges", 'amine': "copper"}
+        self.functional_group_toggle = {}
+
+        for key in self.functional_groups:
+            functional_group_obj = self.functional_groups[key]
+            color = self.functional_group_colors[key]
+
+            self.functional_group_toggle[key] = tk.IntVar(value=1)
+            check_button = tk.Checkbutton(self.settings_frame, text=functional_group_obj.name,
+                                          variable=self.functional_group_toggle[key], fg=color)
+            check_button.pack()
 
     def _create_info_frame(self) -> None:
         self.info_frame = tk.Frame(self, width=400, padx=10, pady=10)
@@ -392,15 +440,15 @@ class MoleculeViewer(tk.Frame):
 
         idx = self.pair_to_idx_mapping[(protein_chembl_id, drug_chembl_id)]
         node_contributions, pred_pchembl = self._get_node_contributions(idx)
-        mol = self.dataset.drug_graphs[idx].mol
+        drug_graph = self.dataset.drug_graphs[idx]
+        mol = drug_graph.mol
         actual_pchembl = self.dataset.pchembl_scores[idx]
         drug_smiles_str = self.dataset.smiles_strs[idx]
 
-        self._draw_molecule(mol, node_contributions)
+        self._draw_molecule(mol, node_contributions, drug_graph)
         self._update_info_frame(str(round(actual_pchembl, 2)), str(round(pred_pchembl, 2)), drug_smiles_str)
 
-    def _draw_molecule(self, mol: rdkit.Chem.Mol, node_contributions: list[float],
-                       contribution_scaler: float = 0.3) -> None:
+    def _draw_molecule(self, mol: rdkit.Chem.Mol, node_contributions: list[float], drug_graph: DrugMolecule) -> None:
         # Generate 2D coordinates for the molecule.
         AllChem.Compute2DCoords(mol)
 
@@ -414,17 +462,39 @@ class MoleculeViewer(tk.Frame):
         image = Image.open(io.BytesIO(png_data))
         self.ax.imshow(image)
 
+        if self.node_contributions_mode.get() == 1:
+            self._display_node_contributions(mol, drawer, node_contributions)
+        elif self.functional_groups_mode.get() == 1:
+            self._display_functional_groups(mol, drawer, drug_graph)
+
+        self.canvas.draw()
+
+    def _display_node_contributions(self, mol: rdkit.Chem.Mol, drawer: rdkit.Chem.Draw.rdMolDraw2D,
+                                    node_contributions: list[float]) -> None:
         for i in range(mol.GetNumAtoms()):
             # Get the coordinates for the ith atom.
             x, y = drawer.GetDrawCoords(i)
             # Calculate the scaled contribution of this atom
-            scaled_contribution = max(-1.0, min(1.0, node_contributions[i] * contribution_scaler))
+            scaled_contribution = max(-1.0, min(1.0, node_contributions[i] *
+                                                self.node_contributions_intensity_slider.get()))
 
             color_scheme = 'Reds' if scaled_contribution < 0 else 'Greens'
             # Create a circle around this atom to show its relative contribution to the interaction strength.
             self._create_gradient_circle(x, y, 200, color_scheme, center_alpha=abs(scaled_contribution))
 
-        self.canvas.draw()
+    def _display_functional_groups(self, mol: rdkit.Chem.Mol, drawer: rdkit.Chem.Draw.rdMolDraw2D,
+                                   drug_graph: DrugMolecule) -> None:
+        for key in self.functional_groups:
+            if self.functional_group_toggle[key].get() == 0:
+                continue
+
+            color_scheme = self.functional_group_color_schemes[key]
+            matches = drug_graph.find_functional_group(self.functional_groups[key])
+            for match in matches:
+                nodes = set(match.values())
+                for node in nodes:
+                    x, y = drawer.GetDrawCoords(node)
+                    self._create_gradient_circle(x, y, 200, color_scheme)
 
     def _create_gradient_circle(self, x: int, y: int, radius: int, color_scheme: str,
                                 center_alpha: float = 0.3, edge_alpha: float = 0) -> None:
@@ -504,30 +574,30 @@ if __name__ == '__main__':
     app = AnalysisApp('../data')
     app.mainloop()
 
-    import python_ta
-
-    python_ta.check_all(config={
-        'extra-imports': [
-            'torch',
-            'torchvision',
-            'numpy',
-            'pandas',
-            'scikit-learn',
-            'rdkit',
-            'typing',
-            'matplotlib',
-            'transformers',
-            'tqdm',
-            'argparse',
-            'tensorboard',
-            'jupyterlab',
-            'notebook',
-            'regex',
-            'xgboost',
-            'hypothesis',
-            'pytest',
-            'python-ta~=2.9.1'
-        ],
-        'allowed-io': [],
-        'max-line-length': 120
-    })
+    # import python_ta
+    #
+    # python_ta.check_all(config={
+    #     'extra-imports': [
+    #         'torch',
+    #         'torchvision',
+    #         'numpy',
+    #         'pandas',
+    #         'scikit-learn',
+    #         'rdkit',
+    #         'typing',
+    #         'matplotlib',
+    #         'transformers',
+    #         'tqdm',
+    #         'argparse',
+    #         'tensorboard',
+    #         'jupyterlab',
+    #         'notebook',
+    #         'regex',
+    #         'xgboost',
+    #         'hypothesis',
+    #         'pytest',
+    #         'python-ta~=2.9.1'
+    #     ],
+    #     'allowed-io': [],
+    #     'max-line-length': 120
+    # })
