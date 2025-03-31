@@ -1,3 +1,10 @@
+"""
+Module for displaying results of running Graph Attention Network.
+This module
+    - Runs the model on individual drug molecules
+    - Evaluate the model's performance on the test dataset
+"""
+
 import tkinter as tk
 from tkinter import ttk
 
@@ -27,7 +34,6 @@ import argparse
 
 # Import local code from src directory.
 sys.path.append(os.path.abspath("src"))
-import argparse
 from utils.dataset import DrugProteinDataset, DrugMolecule
 from utils.helper_functions import set_seeds, get_r_squared
 from utils.functional_groups import *
@@ -250,7 +256,7 @@ class ModelBenchmark(tk.Frame):
         self.canvases['scatter'].get_tk_widget().grid(row=1, column=1, padx=25, pady=5)
 
         # Add a label showing the relevant numerical metrics.
-        tk.Label(self, text=f"R² = {r_squared:.3f}, % Close Predictions = {percent_close_preds:.1%}",
+        tk.Label(self, text=f"R² = {r_squared:.3f}\n% Close Predictions = {percent_close_preds:.1%}",
                  font=("Arial", 12, "bold"), bg="white", wraplength=300).grid(row=2, column=1)
 
     def _plot_scatter(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor) \
@@ -367,7 +373,7 @@ class ModelBenchmark(tk.Frame):
         return pchembl_preds, pchembl_labels
 
     def _get_test_dataset(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, seed: int = 0,
-                          frac_validation: float = 0.15, frac_test: float = 0.15) -> DrugProteinDataset:
+                          frac_validation: float = 0.1, frac_test: float = 0.1) -> DrugProteinDataset:
         """Get the full test dataset using the splits used for training."""
         data_df['stratify_col'] = data_df['Target_ID'] + "_" + data_df['label'].astype(str)
         training_df, remaining_df = train_test_split(data_df,
@@ -762,6 +768,42 @@ class MoleculeViewer(tk.Frame):
 
 
 if __name__ == '__main__':
+    import python_ta
+    python_ta.check_all(config={
+        'extra-imports': [
+            'tkinter',
+            'tkinter.ttk',
+            'matplotlib.pyplot',
+            'matplotlib.figure',
+            'matplotlib.backends.backend_tkagg',
+            'matplotlib.colors',
+            'rdkit.Chem',
+            'rdkit.Chem.AllChem',
+            'rdkit.Chem.Draw.rdMolDraw2D',
+            'torch',
+            'torch.nn',
+            'torch.utils.data',
+            'pandas',
+            'numpy',
+            'math',
+            'io',
+            'PIL.Image',
+            'sklearn.model_selection',
+            'sklearn.metrics',
+            'sys',
+            'os',
+            'argparse',
+            'config',
+            'model',
+            'utils.dataset',
+            'utils.helper_functions',
+            'utils.functional_groups'
+        ],
+        'disable': [],
+        'allowed-io': ['load_data'],
+        'max-line-length': 120,
+    })
+
     set_seeds(seed=0)
     app = AnalysisApp('data')
     app.mainloop()
