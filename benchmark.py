@@ -138,7 +138,7 @@ def main() -> None:
     parser.add_argument("--data_path", type=str, default="data", help="Path to the data folder")
     parser.add_argument("--model_path", type=str, default="models/model.pth", help="Path to the saved model weights")
     parser.add_argument("--use_small_dataset", action="store_true", help="Use small dataset")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size for DataLoader")
     parser.add_argument("--frac_train", type=float, default=0.7, help="Fraction of data for training split")
     parser.add_argument("--frac_validation", type=float, default=0.15, help="Fraction of data for validation split")
