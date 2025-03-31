@@ -66,8 +66,8 @@ class GraphAttentionNetwork(nn.Module):
         # [B, N, F_out] -> [B, 1]
         pchembl_scores = self.global_attn_pooling(updated_node_features)
 
-        # Normalize pChEMBL scores into the range (0, 14) using tanh
-        pchembl_scores = 14 * torch.tanh(pchembl_scores)
+        # Normalize pChEMBL scores into the range (0, 14) using sigmoid
+        pchembl_scores = 14 * torch.sigmoid(pchembl_scores)
 
         # Final shape: [B, 1]
         return pchembl_scores
