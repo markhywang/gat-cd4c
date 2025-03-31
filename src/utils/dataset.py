@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 
-from functional_groups import *
+from .functional_groups import *
 
 
 class DrugMolecule:

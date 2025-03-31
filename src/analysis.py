@@ -29,6 +29,7 @@ from model import GraphAttentionNetwork
 class AnalysisApp(tk.Tk):
     def __init__(self, data_path: str) -> None:
         super().__init__()
+
         self.title("CD4C Analysis")
         self.state("normal")
 
@@ -500,5 +501,38 @@ def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 if __name__ == '__main__':
     set_seeds()
+<<<<<<< HEAD
     app = AnalysisApp('../data')
     app.mainloop()
+=======
+    viewer = MoleculeViewer('../data')
+    viewer.mainloop()
+
+    import python_ta
+
+    python_ta.check_all(config={
+        'extra-imports': [
+            'torch',
+            'torchvision',
+            'numpy',
+            'pandas',
+            'scikit-learn',
+            'rdkit',
+            'typing',
+            'matplotlib',
+            'transformers',
+            'tqdm',
+            'argparse',
+            'tensorboard',
+            'jupyterlab',
+            'notebook',
+            'regex',
+            'xgboost',
+            'hypothesis',
+            'pytest',
+            'python-ta~=2.9.1'
+        ],
+        'allowed-io': [],
+        'max-line-length': 120
+    })
+>>>>>>> 0dd4f3283278f4851cea47259b2e02b96f015b25

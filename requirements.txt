@@ -14,3 +14,6 @@ jupyterlab
 notebook
 regex
 xgboost
+hypothesis
+pytest
+python-ta~=2.9.1
