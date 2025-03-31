@@ -1,6 +1,4 @@
 """Module to benchmark the trained GAT model."""
-
-import argparse
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -143,37 +141,42 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
 
 def main() -> None:
     """Add training arguments and run the benchmark on the model."""
-    parser = argparse.ArgumentParser(description="Evaluate the Graph Attention Network model.")
-    parser.add_argument("--data_path", type=str, default="data", help="Path to the data folder")
-    parser.add_argument("--model_path", type=str, default="models/model.pth", help="Path to the saved model weights")
-    parser.add_argument("--use_small_dataset", action="store_true", help="Use small dataset")
-    parser.add_argument("--seed", type=int, default=0, help="Random seed")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size for DataLoader")
-    parser.add_argument("--frac_train", type=float, default=0.7, help="Fraction of data for training split")
-    parser.add_argument("--frac_validation", type=float, default=0.15, help="Fraction of data for validation split")
-    parser.add_argument("--frac_test", type=float, default=0.15, help="Fraction of data for test split")
-    parser.add_argument("--huber_beta", type=float, default=1.0, help="Beta parameter for SmoothL1Loss")
 
-    # Model parameters (should match those used during training)
-    parser.add_argument("--in_features", type=int, default=349, help="Input feature dimension")
-    parser.add_argument("--out_features", type=int, default=1, help="Output feature dimension")
-    parser.add_argument("--num_edge_features", type=int, default=16, help="Edge feature dimension")
-    parser.add_argument("--hidden_size", type=int, default=96, help="Hidden layer size")
-    parser.add_argument("--num_layers", type=int, default=8, help="Number of GAT layers")
-    parser.add_argument("--num_attn_heads", type=int, default=6, help="Number of attention heads")
-    parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate")
-    parser.add_argument("--pooling_dropout", type=float, default=0.2, help="Dropout rate for global pooling")
-    parser.add_argument("--pooling_dim", type=float, default=96, help="Dimension for global pooling")
-    args = parser.parse_args()
+    # Must match training args
+    args_dict = {
+        "use_small_dataset": False,
+        "batch_size": 64,
+        "stoppage_epochs": 64,
+        "max_epochs": 512,
+        "seed": 0,
+        "data_path": "data",
+        "frac_train": 0.8,
+        "frac_validation": 0.1,
+        "frac_test": 0.1,
+        "huber_beta": 0.5,
+        "weight_decay": 1e-3,
+        "lr": 3e-4,
+        "scheduler_patience": 10,
+        "scheduler_factor": 0.5,
+        "hidden_size": 96,
+        "num_layers": 8,
+        "num_attn_heads": 6,
+        "dropout": 0.2,
+        "pooling_dropout": 0.1,
+        "pooling_dim": 96,
+    }
+
+    import argparse
+    args = argparse.Namespace(**args_dict)
 
     # Set seeds for reproducibility
-    set_seeds()
+    set_seeds(seed=0)
 
     model = load_model(
-        DEVICE, args.model_path,
-        in_features=args.in_features,
-        out_features=args.out_features,
-        num_edge_features=args.num_edge_features,
+        DEVICE, "models/model.pth",
+        in_features=349,
+        out_features=1,
+        num_edge_features=16,
         hidden_size=args.hidden_size,
         num_layers=args.num_layers,
         num_attn_heads=args.num_attn_heads,
