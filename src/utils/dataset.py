@@ -14,13 +14,13 @@ import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 
-from functional_groups import *
+from .functional_groups import *
 
 
 class DrugMolecule:
     """
     Represents a drug molecule and its molecular graph structure.
-    
+
     Instance Attributes:
         mol: The RDKit molecule object representing the drug.
         node_features: A list containing feature dictionaries for each atom in the molecule.
@@ -285,7 +285,7 @@ class DrugMolecule:
 class DrugProteinDataset(Dataset):
     """
     A PyTorch Dataset representing drug-protein interaction data.
-    
+
     Instance Attributes:
         size: The total number of samples in the dataset.
         pchembl_scores: A list of pChEMBL activity values for each sample.
