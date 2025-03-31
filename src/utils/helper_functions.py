@@ -446,5 +446,6 @@ def get_r_squared(preds: np.ndarray, labels: np.ndarray) -> float:
 
 
 if __name__ == "__main__":
-    import doctest
-    doctest.testmod()
+    # import doctest
+    # doctest.testmod()
+    pass

@@ -57,3 +57,9 @@ class Amine(FunctionalGroup):
         edge_features = {(0, 1): {"bond_type": "SINGLE"}}
         neighbours = [[1], [0]]
         super().__init__(0, node_features, edge_features, neighbours, "Amine (R-NH2)", "#8B4513")
+
+
+if __name__ == '__main__':
+    # import doctest
+    # doctest.testmod()
+    pass

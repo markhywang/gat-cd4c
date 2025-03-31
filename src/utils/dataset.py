@@ -347,8 +347,10 @@ class DrugProteinDataset(Dataset):
 
 
 if __name__ == '__main__':
-    import python_ta
+    import doctest
+    doctest.testmod()
 
+    import python_ta
     # Did not work for us (maybe PythonTA has a bug)
     # AttributeError: 'ClassDef' object has no attribute 'value'. Did you mean: 'values'?
     python_ta.check_all(config={

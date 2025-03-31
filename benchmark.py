@@ -181,6 +181,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # import doctest
+    # doctest.testmod()
+
     import python_ta
     python_ta.check_all(config={
         'extra-imports': [
@@ -204,7 +207,7 @@ if __name__ == "__main__":
             'src.utils.dataset',
             'src.utils.helper_functions'
         ],
-        'disable': ['R0914', 'E1101', 'R0913', 'R0902', 'E9959'],  
+        'disable': ['R0914', 'E1101', 'R0913', 'R0902', 'E9959'],
         # R0914 for local variable, E1101 for attributes for imported modules
         # R0913 for arguments, R0902 for instance attributes in class
         # E9959 for instance annotation

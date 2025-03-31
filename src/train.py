@@ -1,6 +1,6 @@
 """
 Module for training the Graph Attention Network using custom-set hyperparameters.
-This module 
+This module
     - retrieves configurations from parser
     - Trains model
     - Evaluate the model's training and validation metrics
@@ -76,7 +76,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device = device) -> No
     metrics_df = pd.DataFrame(columns=['train_loss', 'validation_loss',
                                        'train_acc', 'validation_acc',
                                        'train_mse', 'validation_mse',
-                                       'train_mae', 'validation_mae'], 
+                                       'train_mae', 'validation_mae'],
                               index=range(args.max_epochs))
 
     for epoch in range(args.max_epochs):
@@ -296,8 +296,10 @@ def get_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == '__main__':
-    import python_ta
+    # import doctest
+    # doctest.testmod()
 
+    import python_ta
     python_ta.check_all(config={
         'extra-imports': [
             'argparse',
