@@ -129,7 +129,7 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
 
     metrics = {
         "avg_loss": avg_loss,
-        "accuracy": accuracy,
+        "close predictions": accuracy,
         "mae": mae,
         "mse": mse,
         "r2": r2,
