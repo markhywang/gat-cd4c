@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 
 class GraphAttentionNetwork(nn.Module):
-    """Graph Attention Network for learningh node representations and predicting pCHEMBL scores.
+    """Graph Attention Network for learning node representations and predicting pCHEMBL scores.
 
     Instance Attributes:
         - gat_layers: nn.Sequential containing all GAT layers in sequence

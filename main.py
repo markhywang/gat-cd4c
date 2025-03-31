@@ -33,11 +33,19 @@ from model import GraphAttentionNetwork
 
 
 class AnalysisApp(tk.Tk):
+    """Tkinter window to display analysis of dataset and model.
+
+    Instance Attributes:
+        - model: nn.Module for the Graph Attention Network that has already been trained
+        - notebook: ttk.Notebook that tracks the tabs in the window
+    """
+    model: nn.Module
+    notebook: ttk.Notebook
+
     def __init__(self, data_path: str) -> None:
         super().__init__()
 
-        self.title("CandidateDrug4Cancer Analysis")
-        self.state("normal")
+        super().title("CandidateDrug4Cancer Analysis")
 
         data_df, protein_embeddings_df = load_data(data_path)
         # TODO - remove hard-coded model parameters
@@ -70,6 +78,27 @@ class AnalysisApp(tk.Tk):
 
 
 class ModelBenchmark(tk.Frame):
+    """Tkinter frame to visually represent the results of the model benchmark.
+
+    Instance Attributes:
+        - fig_size: Tuple of width and height for plotted figures (controls resolution)
+        - canvas_size: Tuple of width and height for the canvas used to display the figures
+        - model: nn.Module for the Graph Attention Network that has already been trained
+        - data_df: pd.DataFrame containing the drug-protein data
+        - protein_embeddings_df: pd.DataFrame with the protein embeddings
+        - plots: Dictionary that maps plot names to their corresponding Matplotlib plot
+        - canvases: Dictionary that maps canvas names to their correspond Tkinter canvas
+        - percent_data_slider: A Tkinter Scale widget to control the percentage of test data used for benchmarking
+    """
+    fig_size: tuple[float, float]
+    canvas_size: tuple[int, int]
+    model: nn.Module
+    data_df: pd.DataFrame
+    protein_embeddings_df: pd.DataFrame
+    plots: dict[str, plt.Figure | None]
+    canvases: dict[str, FigureCanvasTkAgg | None]
+    percent_data_slider: tk.Scale
+
     def __init__(self, root: tk.Tk, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, model: nn.Module,
                  fig_size: tuple[float, float] = (4.5, 5), canvas_size: tuple[int, int] = (360, 400)) -> None:
         super().__init__(root)
@@ -85,34 +114,30 @@ class ModelBenchmark(tk.Frame):
         self.protein_embeddings_df = protein_embeddings_df
         self._create_settings_frame()
 
-        self.confusion_plot = None
-        self.confusion_canvas = None
-        self.scatter_plot = None
-        self.scatter_canvas = None
-        self.auc_roc_plot = None
-        self.auc_roc_canvas = None
+        self.plots = {'confusion': None, 'scatter': None, 'auc_roc': None}
+        self.canvases = {'confusion': None, 'scatter': None, 'auc_roc': None}
         self.bind("<Destroy>", self._on_destroy)
 
     def _on_destroy(self, event) -> None:
         self._close_plots()
 
     def _close_plots(self):
-        if self.confusion_plot is not None:
-            plt.close(self.confusion_plot)
-        if self.scatter_plot is not None:
-            plt.close(self.scatter_plot)
-        if self.auc_roc_plot is not None:
-            plt.close(self.auc_roc_plot)
+        if self.plots['confusion'] is not None:
+            plt.close(self.plots['confusion'])
+        if self.plots['scatter'] is not None:
+            plt.close(self.plots['scatter'])
+        if self.plots['auc_roc'] is not None:
+            plt.close(self.plots['auc_roc'])
 
     def _update_display(self) -> None:
-        self.test_dataset = self._get_test_dataset(self.data_df, self.protein_embeddings_df)
-        self.pchembl_preds, self.pchembl_labels = self._eval_model(self.percent_data_slider.get())
+        test_dataset = self._get_test_dataset(self.data_df, self.protein_embeddings_df)
+        pchembl_preds, pchembl_labels = self._eval_model(self.percent_data_slider.get(), test_dataset)
 
         self._close_plots()
 
-        self._update_confusion_matrix()
-        self._update_scatter()
-        self._update_auc_roc()
+        self._update_confusion_matrix(pchembl_preds, pchembl_labels)
+        self._update_scatter(pchembl_preds, pchembl_labels)
+        self._update_auc_roc(pchembl_preds, pchembl_labels)
 
     def _create_settings_frame(self):
         settings_frame = tk.Frame(self, padx=5, pady=5)
@@ -128,15 +153,15 @@ class ModelBenchmark(tk.Frame):
 
         settings_frame.grid(row=0, column=0, padx=20, pady=(20, 0), sticky='w')
 
-    def _update_confusion_matrix(self):
-        confusion_dict = self._get_confusion_dict()
-        self.confusion_plot, precision, recall, accuracy = self._plot_confusion_matrix(confusion_dict)
+    def _update_confusion_matrix(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor) -> None:
+        confusion_dict = self._get_confusion_dict(pchembl_preds, pchembl_labels)
+        self.plots['confusion'], precision, recall, accuracy = self._plot_confusion_matrix(confusion_dict)
 
         # Embed the plot into the Tkinter frame.
-        self.confusion_canvas = FigureCanvasTkAgg(self.confusion_plot, master=self)
-        self.confusion_canvas.draw()
-        self.confusion_canvas.get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
-        self.confusion_canvas.get_tk_widget().grid(row=1, column=0, padx=5, pady=5)
+        self.canvases['confusion'] = FigureCanvasTkAgg(self.plots['confusion'], master=self)
+        self.canvases['confusion'].draw()
+        self.canvases['confusion'].get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
+        self.canvases['confusion'].get_tk_widget().grid(row=1, column=0, padx=25, pady=5)
 
         # Add a label showing the relevant numerical metrics.
         tk.Label(self, text=f"Precision = {precision:.1%}, Recall = {recall:.1%}, Accuracy = {accuracy:.1%}",
@@ -174,7 +199,7 @@ class ModelBenchmark(tk.Frame):
             for j in range(2):
                 plt.text(j, i, f"{matrix[i, j]}", ha='center', va='center', color='black', fontsize=12)
 
-        plt.title("Confusion Matrix", fontsize=16, pad=30)
+        plt.title("Confusion Matrix", fontsize=16, pad=40)
 
         # Automatically adjust subplots to fit into the figure area.
         fig.tight_layout()
@@ -185,9 +210,10 @@ class ModelBenchmark(tk.Frame):
 
         return fig, precision, recall, accuracy
 
-    def _get_confusion_dict(self, pchembl_threshold: float = 7.0) -> dict[str, int]:
-        positive_preds = [x >= pchembl_threshold for x in self.pchembl_preds]
-        positive_labels = [x >= pchembl_threshold for x in self.pchembl_labels]
+    def _get_confusion_dict(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor,
+                            pchembl_threshold: float = 7.0) -> dict[str, int]:
+        positive_preds = [x >= pchembl_threshold for x in pchembl_preds]
+        positive_labels = [x >= pchembl_threshold for x in pchembl_labels]
         confusion_dict = {'true_positive': 0, 'false_positive': 0, 'true_negative': 0, 'false_negative': 0}
 
         for pred, label in zip(positive_preds, positive_labels):
@@ -197,22 +223,23 @@ class ModelBenchmark(tk.Frame):
 
         return confusion_dict
 
-    def _update_scatter(self):
-        self.scatter_plot, r_squared, percent_close_preds = self._plot_scatter(self.pchembl_preds, self.pchembl_labels)
+    def _update_scatter(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor):
+        self.plots['scatter'], r_squared, percent_close_preds = self._plot_scatter(pchembl_preds, pchembl_labels)
 
         # Embed the plot into the Tkinter frame.
-        self.scatter_canvas = FigureCanvasTkAgg(self.scatter_plot, master=self)
-        self.scatter_canvas.draw()
-        self.scatter_canvas.get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
-        self.scatter_canvas.get_tk_widget().grid(row=1, column=1, padx=5, pady=5)
+        self.canvases['scatter'] = FigureCanvasTkAgg(self.plots['scatter'], master=self)
+        self.canvases['scatter'].draw()
+        self.canvases['scatter'].get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
+        self.canvases['scatter'].get_tk_widget().grid(row=1, column=1, padx=25, pady=5)
 
         # Add a label showing the relevant numerical metrics.
         tk.Label(self, text=f"R² = {r_squared:.3f}, % Close Predictions = {percent_close_preds:.1%}",
                  font=("Arial", 12, "bold"), bg="white", wraplength=300).grid(row=2, column=1)
 
-    def _plot_scatter(self, preds: torch.Tensor, labels: torch.Tensor) -> tuple[plt.Figure, float, float]:
-        preds = preds.cpu().detach().numpy()
-        labels = labels.cpu().detach().numpy()
+    def _plot_scatter(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor) \
+            -> tuple[plt.Figure, float, float]:
+        preds = pchembl_preds.cpu().detach().numpy()
+        labels = pchembl_labels.cpu().detach().numpy()
         r_squared = get_r_squared(preds, labels)
         percent_close_preds = np.mean(np.abs(preds - labels) <= 1)
 
@@ -244,23 +271,23 @@ class ModelBenchmark(tk.Frame):
 
         return fig, r_squared, percent_close_preds
 
-    def _update_auc_roc(self):
-        self.auc_roc_plot, auc_roc_score = self._plot_auc_roc(self.pchembl_preds, self.pchembl_labels)
+    def _update_auc_roc(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor):
+        self.plots['auc_roc'], auc_roc_score = self._plot_auc_roc(pchembl_preds, pchembl_labels)
 
         # Embed the plot into the Tkinter frame.
-        self.auc_roc_canvas = FigureCanvasTkAgg(self.auc_roc_plot, master=self)
-        self.auc_roc_canvas.draw()
-        self.auc_roc_canvas.get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
-        self.auc_roc_canvas.get_tk_widget().grid(row=1, column=2, padx=5, pady=5)
+        self.canvases['auc_roc'] = FigureCanvasTkAgg(self.plots['auc_roc'], master=self)
+        self.canvases['auc_roc'].draw()
+        self.canvases['auc_roc'].get_tk_widget().config(width=self.canvas_size[0], height=self.canvas_size[1])
+        self.canvases['auc_roc'].get_tk_widget().grid(row=1, column=2, padx=25, pady=5)
 
         # Add a label showing the relevant numerical metrics.
         tk.Label(self, text=f"AUC-ROC = {auc_roc_score:.3f}", font=("Arial", 12, "bold"),
                  bg="white", wraplength=300).grid(row=2, column=2)
 
-    def _plot_auc_roc(self, preds: torch.Tensor, labels: torch.Tensor, pchembl_threshold: float = 7.0) \
+    def _plot_auc_roc(self, pchembl_preds: torch.Tensor, pchembl_labels: torch.Tensor, pchembl_threshold: float = 7.0) \
             -> tuple[plt.Figure, float]:
-        preds = preds.cpu().tolist()
-        labels = [x >= pchembl_threshold for x in labels]
+        preds = pchembl_preds.cpu().tolist()
+        labels = [x >= pchembl_threshold for x in pchembl_labels]
 
         # Compute ROC curve and area under curve.
         fpr, tpr, _ = roc_curve(labels, preds)
@@ -273,7 +300,7 @@ class ModelBenchmark(tk.Frame):
 
         ax.set_xlabel('False Positive Rate')
         ax.set_ylabel('True Positive Rate')
-        ax.set_title('ROC Curve')
+        plt.title("Confusion Matrix", fontsize=16, pad=20)
         ax.legend(loc='lower right')
         ax.grid(True)
 
@@ -281,13 +308,14 @@ class ModelBenchmark(tk.Frame):
 
         return fig, auc_roc_score
 
-    def _eval_model(self, percent_data, batch_size: int = 50) -> tuple[torch.Tensor, torch.Tensor]:
+    def _eval_model(self, percent_data, test_dataset: DrugProteinDataset, batch_size: int = 50) \
+            -> tuple[torch.Tensor, torch.Tensor]:
         assert 0 < percent_data <= 1
 
         # Choose an arbitrary batch size to prevent input from utilizing too much RAM.
-        test_loader = DataLoader(self.test_dataset, batch_size=batch_size, shuffle=False)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         # Calculate the target amount of data.
-        target_data_size = max(1, math.ceil(percent_data * len(self.test_dataset)))
+        target_data_size = max(1, math.ceil(percent_data * len(test_dataset)))
         # Calculate the number of batches that need to be processed to get the target amount of data.
         num_batches = math.ceil(target_data_size / batch_size)
 
@@ -328,6 +356,28 @@ class ModelBenchmark(tk.Frame):
 
 
 class MoleculeViewer(tk.Frame):
+    """Tkinter frame to visually display the drug molecule.
+
+    Instance Attributes:
+        - dataset: Dataset object with pChEMBL interaction data
+        - model: nn.Module for the Graph Attention Network that has already been trained
+        - pair_to_idx_mapping: Dictionary that maps a pair of drug/protein pChEMBL IDs to their corresponding
+          index in the dataset
+        - protein_to_drugs_mapping: Dictionary that maps a protein pChEMBL ID to the drugs it has been tested with
+        - fig: Matplolib figure used to display the drug molecule
+        - ax: Axes for fig
+        - tk_widgets: Dictionary that maps the name of a widget to its correspond Tkinter widget
+        - functional_groups: Dictionary that maps the name of a functional group to an object
+    """
+    dataset: DrugProteinDataset
+    model: nn.Module
+    pair_to_idx_mapping: dict[tuple[str, str], int]
+    protein_to_drugs_mapping: dict[str, list[str]]
+    fig: plt.Figure
+    ax: plt.Axes
+    tk_widgets: dict[str, Any]
+    functional_groups: dict[str, FunctionalGroup]
+
     def __init__(self, root: tk.Tk, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame,
                  model: nn.Module) -> None:
         super().__init__(root)
@@ -359,12 +409,13 @@ class MoleculeViewer(tk.Frame):
             else:
                 self.protein_to_drugs_mapping[protein_pchembl_id] = [drug_pchembl_id]
 
+        self.tk_widgets = {}
         self._create_settings_frame()
         # Create a figure to show the drug molecule.
-        self.fig, self.ax, self.canvas = self._init_canvas(column=1)
+        self.fig, self.ax, self.tk_widgets['canvas'] = self._init_canvas()
         self._create_info_frame()
 
-    def _init_canvas(self, column: int, size: int = 1200, **kwargs) -> tuple[Figure, plt.Axes, FigureCanvasTkAgg]:
+    def _init_canvas(self, size: int = 1200, **kwargs) -> tuple[Figure, plt.Axes, FigureCanvasTkAgg]:
         fig = Figure()
         ax = fig.add_subplot()
         ax.set_xlim(0, size)
@@ -375,7 +426,7 @@ class MoleculeViewer(tk.Frame):
         ax.imshow(Image.new('RGB', (size, size), (255, 255, 255)))
 
         canvas = FigureCanvasTkAgg(fig, master=self)
-        canvas.get_tk_widget().grid(row=0, column=column, sticky="nsew", padx=10, pady=10, **kwargs)
+        canvas.get_tk_widget().grid(row=0, column=1, sticky="nsew", padx=10, pady=10, **kwargs)
 
         return fig, ax, canvas
 
@@ -385,49 +436,49 @@ class MoleculeViewer(tk.Frame):
         x_pad = 30
 
         # Create a left panel that contains various settings that the user can modify.
-        self.settings_frame = tk.Frame(self)
-        self.settings_frame.grid(row=0, column=0, padx=10, sticky="nsw")
+        self.tk_widgets['settings_frame'] = tk.Frame(self)
+        self.tk_widgets['settings_frame'].grid(row=0, column=0, padx=10, sticky="nsw")
 
         # Add a spacer at the top.
-        tk.Label(self.settings_frame, text="", height=2).pack()
+        tk.Label(self.tk_widgets['settings_frame'], text="", height=2).pack()
 
-        tk.Label(self.settings_frame, text="Protein ChEMBL ID:", font=font).pack(padx=x_pad)
-        self.protein_dropdown = ttk.Combobox(
-            self.settings_frame, values=[""] + list(dict.fromkeys(self.dataset.protein_ids)),
+        tk.Label(self.tk_widgets['settings_frame'], text="Protein ChEMBL ID:", font=font).pack(padx=x_pad)
+        self.tk_widgets['protein_dropdown'] = ttk.Combobox(
+            self.tk_widgets['settings_frame'], values=[""] + list(dict.fromkeys(self.dataset.protein_ids)),
             state="readonly", font=font)
-        self.protein_dropdown.pack(pady=(5, 20), padx=x_pad)
-        self.protein_dropdown.current(0)
-        self.protein_dropdown.bind("<<ComboboxSelected>>", self._update_drug_dropdown)
+        self.tk_widgets['protein_dropdown'].pack(pady=(5, 20), padx=x_pad)
+        self.tk_widgets['protein_dropdown'].current(0)
+        self.tk_widgets['protein_dropdown'].bind("<<ComboboxSelected>>", self._update_drug_dropdown)
 
-        tk.Label(self.settings_frame, text="Drug ChEMBL ID:", font=font).pack(padx=x_pad)
-        self.drug_dropdown = ttk.Combobox(self.settings_frame, state="readonly", font=font)
-        self.drug_dropdown.pack(pady=(5, 20), padx=x_pad)
+        tk.Label(self.tk_widgets['settings_frame'], text="Drug ChEMBL ID:", font=font).pack(padx=x_pad)
+        self.tk_widgets['drug_dropdown'] = ttk.Combobox(self.tk_widgets['settings_frame'], state="readonly", font=font)
+        self.tk_widgets['drug_dropdown'].pack(pady=(5, 20), padx=x_pad)
         self._update_drug_dropdown()
 
         self._create_mode_settings()
 
-        self.submit_button = tk.Button(self.settings_frame, text="Draw Molecule", font=font,
-                                       command=self._update_display)
-        self.submit_button.pack(padx=x_pad, pady=20)
+        self.tk_widgets['submit_button'] = tk.Button(self.tk_widgets['settings_frame'], text="Draw Molecule",
+                                                     font=font, command=self._update_display)
+        self.tk_widgets['submit_button'].pack(padx=x_pad, pady=20)
 
     def _create_mode_settings(self):
         # Create variables to track which mode is currently selected.
-        self.node_contributions_mode = tk.IntVar()
-        self.functional_groups_mode = tk.IntVar()
+        self.tk_widgets['node_contributions_mode'] = tk.IntVar()
+        self.tk_widgets['functional_groups_mode'] = tk.IntVar()
 
-        node_contributions_checkbox = tk.Checkbutton(self.settings_frame, text="Show Node Contributons",
-                                                     variable=self.node_contributions_mode,
+        node_contributions_checkbox = tk.Checkbutton(self.tk_widgets['settings_frame'], text="Show Node Contributons",
+                                                     variable=self.tk_widgets['node_contributions_mode'],
                                                      command=lambda: self._toggle_mode('node_contributions'))
         node_contributions_checkbox.pack(pady=(20, 0))
 
-        tk.Label(self.settings_frame, text="Display Intensity").pack()
-        self.node_contributions_intensity_slider = tk.Scale(self.settings_frame, from_=0.1, to=0.7,
-                                                            resolution=0.05, orient="horizontal")
-        self.node_contributions_intensity_slider.set(0.4)
-        self.node_contributions_intensity_slider.pack()
+        tk.Label(self.tk_widgets['settings_frame'], text="Display Intensity").pack()
+        self.tk_widgets['node_contributions_intensity_slider'] = tk.Scale(
+            self.tk_widgets['settings_frame'], from_=0.1, to=0.7, resolution=0.05, orient="horizontal")
+        self.tk_widgets['node_contributions_intensity_slider'].set(0.4)
+        self.tk_widgets['node_contributions_intensity_slider'].pack()
 
-        functional_groups_checkbox = tk.Checkbutton(self.settings_frame, text="Show Functional Groups",
-                                                    variable=self.functional_groups_mode,
+        functional_groups_checkbox = tk.Checkbutton(self.tk_widgets['settings_frame'], text="Show Functional Groups",
+                                                    variable=self.tk_widgets['functional_groups_mode'],
                                                     command=lambda: self._toggle_mode('functional_groups'))
         functional_groups_checkbox.pack(pady=(20, 0))
 
@@ -435,41 +486,36 @@ class MoleculeViewer(tk.Frame):
 
     def _toggle_mode(self, selected_mode: str) -> None:
         if selected_mode == 'node_contributions':
-            self.functional_groups_mode.set(0)
+            self.tk_widgets['functional_groups_mode'].set(0)
         elif selected_mode == 'functional_groups':
-            self.node_contributions_mode.set(0)
+            self.tk_widgets['node_contributions_mode'].set(0)
 
     def _create_functional_group_settings(self) -> None:
         self.functional_groups = {'ketone': Ketone(), 'ether': Ether(), 'alcohol': Alcohol(), 'amine': Amine()}
-        self.functional_group_colors = {'ketone': "#0000FF", 'ether': "#800080",
-                                        'alcohol': "#FFA500", 'amine': "#8B4513"}
-        self.functional_group_color_schemes = {'ketone': "Blues", 'ether': "Purples",
-                                               'alcohol': "Oranges", 'amine': "copper"}
-        self.functional_group_toggle = {}
 
         for key in self.functional_groups:
             functional_group_obj = self.functional_groups[key]
-            color = self.functional_group_colors[key]
+            color = functional_group_obj.color
 
-            self.functional_group_toggle[key] = tk.IntVar(value=1)
-            check_button = tk.Checkbutton(self.settings_frame, text=functional_group_obj.name,
-                                          variable=self.functional_group_toggle[key], fg=color)
+            self.tk_widgets[key + '_toggle'] = tk.IntVar(value=1)
+            check_button = tk.Checkbutton(self.tk_widgets['settings_frame'], text=functional_group_obj.name,
+                                          variable=self.tk_widgets[key + '_toggle'], fg=color)
             check_button.pack()
 
     def _create_info_frame(self) -> None:
-        self.info_frame = tk.Frame(self, width=400, padx=10, pady=10)
-        self.info_frame.grid_propagate(False)
-        self.info_frame.grid(row=0, column=2, sticky="ns", padx=50, pady=100)
+        self.tk_widgets['info_frame'] = tk.Frame(self, width=400, padx=10, pady=10)
+        self.tk_widgets['info_frame'].grid_propagate(False)
+        self.tk_widgets['info_frame'].grid(row=0, column=2, sticky="ns", padx=50, pady=100)
 
         self._update_info_frame("", "", "")
 
     def _update_info_frame(self, actual_pchembl_str: str, pred_pchembl_str: str, smiles_str: str) -> None:
-        for widget in self.info_frame.winfo_children():
+        for widget in self.tk_widgets['info_frame'].winfo_children():
             widget.destroy()
 
         data = [
-            ("Protein ID", self.protein_dropdown.get(), False),
-            ("Drug ID", self.drug_dropdown.get(), False),
+            ("Protein ID", self.tk_widgets['protein_dropdown'].get(), False),
+            ("Drug ID", self.tk_widgets['drug_dropdown'].get(), False),
             ("Drug SMILES String", smiles_str, True),
             ("", "", False),  # Add an extra label for padding
             ("Actual pChEMBL", actual_pchembl_str, False),
@@ -479,32 +525,32 @@ class MoleculeViewer(tk.Frame):
         row = 0
         for label, value, newline in data:
             if newline:
-                label = tk.Message(self.info_frame, text=label, font=("Arial", 12, "bold"), anchor="w", width=280)
+                label = tk.Message(self.tk_widgets['info_frame'], text=label, font=("Arial", 12, "bold"), anchor="w", width=280)
                 label.grid(row=row, column=0, sticky="w", padx=5, pady=(5, 0), columnspan=2)
-                value = tk.Message(self.info_frame, text=value, font=("Arial", 12), anchor="w", width=280)
+                value = tk.Message(self.tk_widgets['info_frame'], text=value, font=("Arial", 12), anchor="w", width=280)
                 value.grid(row=row + 1, column=0, sticky="w", padx=5, pady=(0, 5), columnspan=2)
                 row += 2
             else:
-                label = tk.Message(self.info_frame, text=label, font=("Arial", 12, "bold"), anchor="w", width=140)
+                label = tk.Message(self.tk_widgets['info_frame'], text=label, font=("Arial", 12, "bold"), anchor="w", width=140)
                 label.grid(row=row, column=0, sticky="w", padx=5, pady=5, columnspan=1)
-                value = tk.Message(self.info_frame, text=value, font=("Arial", 12), anchor="w", width=140)
+                value = tk.Message(self.tk_widgets['info_frame'], text=value, font=("Arial", 12), anchor="w", width=140)
                 value.grid(row=row, column=1, sticky="w", padx=5, pady=5)
                 row += 1
 
     def _update_drug_dropdown(self, event: tk.Event = None) -> None:
-        selected_protein = self.protein_dropdown.get()
+        selected_protein = self.tk_widgets['protein_dropdown'].get()
         if selected_protein == "":
-            self.drug_dropdown["values"] = [""]
-            self.drug_dropdown.current(0)
+            self.tk_widgets['drug_dropdown']["values"] = [""]
+            self.tk_widgets['drug_dropdown'].current(0)
         else:
             new_drug_options = self.protein_to_drugs_mapping[selected_protein]
-            self.drug_dropdown["values"] = [""] + new_drug_options
-            if self.drug_dropdown.get() not in new_drug_options:
-                self.drug_dropdown.current(0)
+            self.tk_widgets['drug_dropdown']["values"] = [""] + new_drug_options
+            if self.tk_widgets['drug_dropdown'].get() not in new_drug_options:
+                self.tk_widgets['drug_dropdown'].current(0)
 
     def _update_display(self) -> None:
-        protein_chembl_id = self.protein_dropdown.get()
-        drug_chembl_id = self.drug_dropdown.get()
+        protein_chembl_id = self.tk_widgets['protein_dropdown'].get()
+        drug_chembl_id = self.tk_widgets['drug_dropdown'].get()
 
         # Can only create a molecule graph if both the protein and the drug are specified.
         if protein_chembl_id == "" or drug_chembl_id == "":
@@ -534,12 +580,12 @@ class MoleculeViewer(tk.Frame):
         image = Image.open(io.BytesIO(png_data))
         self.ax.imshow(image)
 
-        if self.node_contributions_mode.get() == 1:
+        if self.tk_widgets['node_contributions_mode'].get() == 1:
             self._display_node_contributions(mol, drawer, node_contributions)
-        elif self.functional_groups_mode.get() == 1:
+        elif self.tk_widgets['functional_groups_mode'].get() == 1:
             self._display_functional_groups(drawer, drug_graph)
 
-        self.canvas.draw()
+        self.tk_widgets['canvas'].draw()
 
     def _display_node_contributions(self, mol: rdkit.Chem.Mol, drawer: rdkit.Chem.Draw.rdMolDraw2D,
                                     node_contributions: list[float]) -> None:
@@ -548,7 +594,7 @@ class MoleculeViewer(tk.Frame):
             x, y = drawer.GetDrawCoords(i)
             # Calculate the scaled contribution of this atom
             scaled_contribution = max(-1.0, min(1.0, node_contributions[i] *
-                                                self.node_contributions_intensity_slider.get()))
+                                                self.tk_widgets['node_contributions_intensity_slider'].get()))
 
             color_scheme = 'Reds' if scaled_contribution < 0 else 'Greens'
             # Create a circle around this atom to show its relative contribution to the interaction strength.
@@ -556,16 +602,17 @@ class MoleculeViewer(tk.Frame):
 
     def _display_functional_groups(self, drawer: rdkit.Chem.Draw.rdMolDraw2D, drug_graph: DrugMolecule) -> None:
         for key in self.functional_groups:
-            if self.functional_group_toggle[key].get() == 0:
+            if self.tk_widgets[key + '_toggle'].get() == 0:
                 continue
 
-            color = self.functional_group_colors[key]
-            matches = drug_graph.find_functional_group(self.functional_groups[key])
+            functional_group_obj = self.functional_groups[key]
+            color = functional_group_obj.color
+            matches = drug_graph.find_functional_group(functional_group_obj)
             for match in matches:
                 nodes = match.values()
                 for node in nodes:
                     x, y = drawer.GetDrawCoords(node)
-                    self._create_uniform_circle(x, y, 100, color, 0.2)
+                    self._create_uniform_circle(x, y, 150, color, 0.2)
 
     def _create_gradient_circle(self, x: int, y: int, radius: int, color_scheme: str,
                                 center_alpha: float = 0.3, edge_alpha: float = 0) -> None:
