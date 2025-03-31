@@ -9,7 +9,6 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from sklearn.metrics import (
-    accuracy_score,
     f1_score,
     precision_score,
     recall_score,
@@ -18,7 +17,7 @@ from sklearn.metrics import (
 
 from src.model import GraphAttentionNetwork
 from src.utils.dataset import DrugProteinDataset
-from src.utils.helper_functions import set_seeds
+from src.utils.helper_functions import set_seeds, accuracy_func
 
 # Set device
 DEVICE = torch.device("cpu")
@@ -112,7 +111,7 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
     binary_labels = (all_labels >= PCHEMBL_THRESHOLD).astype(int)
 
     # Compute classification metrics
-    accuracy = accuracy_score(binary_labels, binary_preds)
+    accuracy = accuracy_func(all_labels, all_preds, 1.0) / len(all_labels)
     f1 = f1_score(binary_labels, binary_preds)
     precision = precision_score(binary_labels, binary_preds)
     recall = recall_score(binary_labels, binary_preds)
@@ -151,7 +150,7 @@ def main() -> None:
     parser.add_argument("--out_features", type=int, default=1, help="Output feature dimension")
     parser.add_argument("--num_edge_features", type=int, default=16, help="Edge feature dimension")
     parser.add_argument("--hidden_size", type=int, default=96, help="Hidden layer size")
-    parser.add_argument("--num_layers", type=int, default=7, help="Number of GAT layers")
+    parser.add_argument("--num_layers", type=int, default=8, help="Number of GAT layers")
     parser.add_argument("--num_attn_heads", type=int, default=6, help="Number of attention heads")
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate")
     parser.add_argument("--pooling_dropout", type=float, default=0.2, help="Dropout rate for global pooling")
