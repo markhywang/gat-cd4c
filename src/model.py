@@ -10,16 +10,8 @@ class GraphAttentionNetwork(nn.Module):
     """Graph Attention Network for learningh node representations and predicting pCHEMBL scores.
 
     Instance Attributes:
-        - device: The device to peform computations.
-        - in_features: Dimension of input node features.
-        - out_features: Dimension of output node features.
-        - num_edge_features: Dimension of edge features.
-        - hidden_size: Hidden dimension for intermediate layers.
-        - num_layers: Number of GAT layers.
-        - num_attn_heads: Number of attention heads.
-        - dropout: Dropout probability used in GAT layers.
-        - pooling_dropout: Dropout probability for the global pooling layer.
-        - pooling_dim: Hidden dimension for the global attention pooling layer.
+        - gat_layers: nn.Sequential containing all GAT layers in sequence
+        - global_attn_pooling: Another nn.Module which conducts global attention pooling after the GAT layers
     """
     gat_layers: nn.Module
     global_attn_pooling: nn.Module
@@ -27,11 +19,13 @@ class GraphAttentionNetwork(nn.Module):
     def __init__(self, device: str, in_features: int, out_features: int, num_edge_features: int,
                  hidden_size: int, num_layers: int, num_attn_heads: int, dropout: float, pooling_dropout: float,
                  pooling_dim: int) -> None:
+        """Initialize the Graph Attention Network"""
         super().__init__()
 
         if num_layers == 1:
             layers = [GraphAttentionLayer(device, in_features, out_features,
-                                          num_edge_features, dropout, use_leaky_relu=False)]
+                                          num_edge_features, num_attn_heads,
+                                          dropout, use_leaky_relu=False)]
         else:
             layers = [GraphAttentionLayer(device, in_features, hidden_size,
                                           num_edge_features, num_attn_heads, dropout=dropout)]
@@ -49,12 +43,8 @@ class GraphAttentionNetwork(nn.Module):
 
     def forward(self, node_features: torch.Tensor, edge_features: torch.Tensor,
                 adjacency_matrix: torch.Tensor) -> torch.Tensor:
-        """Compute and forward pass of the GAT
-
-        Instance Attributes:
-            - node_features: Tensor of shape [B, N, F_in] representing node features.
-            - edge_features: Tensor of shape [B, N, N, F_edge] representing edge features.
-            - adjacency_matrix: Tensor of shape [B, N, N] representing the adjacency matrix.
+        """
+        Compute and forward pass of the GAT
         """
         # Initial node feature shape: [B, N, F_in]
         input_tuple = (node_features, edge_features, adjacency_matrix)
@@ -77,9 +67,8 @@ class GlobalAttentionPooling(nn.Module):
     """Global attention pooling layer for aggregating node features.
 
     Instance Attributes:
-        - in_features: Dimension of input features.
-        - out_features: Dimension of output features. Defaults to 1.
-        - hidden_dim: Hidden dimension for the projection. Defaults to 128.
+        - global_attn: A linear layer that projects input onto logits
+        - final_projection: A multi-layer perceptron that acts as final projection after attention
         - dropout: Dropout probability. Defaults to 0.2.
     """
     global_attn: nn.Module
@@ -87,6 +76,7 @@ class GlobalAttentionPooling(nn.Module):
     dropout: float
 
     def __init__(self, in_features: int, out_features: int = 1, hidden_dim: int = 128, dropout: float = 0.2) -> None:
+        """Initialize Global Attention Pooling"""
         super().__init__()
 
         self.global_attn = nn.Linear(in_features, 1)
@@ -126,12 +116,19 @@ class GraphAttentionLayer(nn.Module):
 
     Instance Attributes:
         - device (torch.device): The device to perform computations on.
-        - in_features (int): Dimension of input node features.
-        - out_features (int): Dimension of output node features.
-        - num_edge_features (int): Dimension of edge features.
-        - num_attn_heads (int, optional): Number of attention heads. Defaults to 1.
-        - dropout (int, optional): Dropout probability. Defaults to 0.2.
-        - use_leaky_relu (bool, optional): Whether to use LeakyReLU activation. Defaults to True.
+        - node_projection (nn.Module): Linear transformation applied to input node features.
+        - layer_norm_1 (nn.Module): Layer normalization applied to input node features.
+        - layer_norm_2 (nn.Module): Layer normalization applied to edge features.
+        - edge_mlp (nn.Module): MLP used for edge feature transformation.
+        - use_leaky_relu (bool): Whether to use LeakyReLU activation.
+        - leaky_relu (nn.Module): LeakyReLU activation function.
+        - num_attn_heads (int): Number of attention heads.
+        - head_size (int): Size of each attention head.
+        - attn_matrix (nn.Parameter): Attention weight matrix.
+        - attn_leaky_relu (nn.Module): LeakyReLU activation function for attention scores.
+        - out_node_projection (nn.Module): Linear transformation applied after attention computation.
+        - dropout (nn.Module): Dropout layer to prevent overfitting.
+        - residual_proj (nn.Module): Linear transformation for residual connection, or Identity if not needed.
     """
     device: torch.device
     node_projection: nn.Module
@@ -151,6 +148,7 @@ class GraphAttentionLayer(nn.Module):
     def __init__(self, device: str, in_features: int, out_features: int,
                  num_edge_features: int, num_attn_heads: int = 1, dropout: float = 0.2,
                  use_leaky_relu: bool = True) -> None:
+        """Initialize a single GAT layer"""
         super().__init__()
         self.device = device
 
@@ -234,9 +232,7 @@ class GraphAttentionLayer(nn.Module):
 
     def _compute_attn_coeffs(self, node_features: torch.Tensor, edge_features: torch.Tensor,
                              adjacency_matrix: torch.Tensor, num_nodes: int) -> torch.Tensor:
-        """
-        Input node_features shape: [B, N, num_heads, F_out // num_heads]
-        """
+        """Compute attention coefficients for message passing."""
         # [B, N, num_heads, F_out // num_heads] -> [B, N, N, num_heads, F_out // num_heads]
         row_node_features = node_features.unsqueeze(2).repeat(1, 1, num_nodes, 1, 1)
 
@@ -279,10 +275,7 @@ class GraphAttentionLayer(nn.Module):
 
     def _execute_message_passing(self, node_features: torch.Tensor, attn_coeffs: torch.Tensor,
                                  batch_size: int, num_nodes: int) -> torch.Tensor:
-        """
-        node_features shape: [B, N, num_heads, F_out // num_heads]
-        attn_coeffs shape:   [B, N,    N     ,     num_heads     ]
-        """
+        """Perform message passing based on computed attention coefficients."""
         # [B, N, num_heads, F_out // num_heads] EINSUM [B, N, N, num_heads]
         # -> [B, N, num_heads, F_out // num_heads]
         new_node_features = torch.einsum('bmax, bnma -> bnax', node_features, attn_coeffs)
