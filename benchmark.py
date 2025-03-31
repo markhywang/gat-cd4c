@@ -114,7 +114,7 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
     accuracy = accuracy_func(all_labels, all_preds, 1.0) / len(all_labels)
     f1 = f1_score(binary_labels, binary_preds)
     mae = mae_func(all_labels, all_preds)
-    mse = mae_func(all_labels, all_preds)
+    mse = mse_func(all_labels, all_preds)
     precision = precision_score(binary_labels, binary_preds)
     recall = recall_score(binary_labels, binary_preds)
     try:
