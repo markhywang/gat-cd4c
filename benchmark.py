@@ -1,4 +1,5 @@
 """Module to benchmark the trained GAT model."""
+import argparse
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -166,7 +167,6 @@ def main() -> None:
         "pooling_dim": 96,
     }
 
-    import argparse
     args = argparse.Namespace(**args_dict)
 
     # Set seeds for reproducibility
