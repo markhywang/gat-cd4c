@@ -38,15 +38,15 @@ def train_model(args: argparse.Namespace, m_device: torch.device = device) -> No
 
     model = GraphAttentionNetwork(
         device,
-        349,
-        1,
-        16,
-        args.hidden_size,
-        args.num_layers,
-        args.num_attn_heads,
-        args.dropout,
-        args.pooling_dropout,
-        args.pooling_dim
+        in_features=349,
+        out_features=1,
+        num_edge_features=16,
+        hidden_size=args.hidden_size,
+        num_layers=args.num_layers,
+        num_attn_heads=args.num_attn_heads,
+        dropout=args.dropout,
+        pooling_dropout=args.pooling_dropout,
+        pooling_dim=args.pooling_dim
     ).to(torch.float32).to(device)
 
     print(f'Model parameters: {count_model_params(model)}')

@@ -47,19 +47,46 @@ class AnalysisApp(tk.Tk):
 
         super().title("CandidateDrug4Cancer Analysis")
 
+        # Model Arguemnts (must match those used to train model)
+        args_dict = {
+            "use_small_dataset": False,
+            "batch_size": 64,
+            "stoppage_epochs": 64,
+            "max_epochs": 512,
+            "seed": 0,
+            "data_path": "../data",
+            "frac_train": 0.8,
+            "frac_validation": 0.1,
+            "frac_test": 0.1,
+            "huber_beta": 0.5,
+            "weight_decay": 1e-3,
+            "lr": 3e-4,
+            "scheduler_patience": 10,
+            "scheduler_factor": 0.5,
+            "hidden_size": 96,
+            "num_layers": 8,
+            "num_attn_heads": 6,
+            "dropout": 0.2,
+            "pooling_dropout": 0.1,
+            "pooling_dim": 96,
+        }
+
+        import argparse
+        args = argparse.Namespace(**args_dict)
+
         data_df, protein_embeddings_df = load_data(data_path)
-        # TODO - remove hard-coded model parameters
+
         self.model = GraphAttentionNetwork(
-            "cpu",
-            349,
-            1,
-            16,
-            96,
-            8,
-            6,
-            0.2,
-            0.1,
-            96
+            device="cpu",
+            in_features=349,
+            out_features=1,
+            num_edge_features=16,
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
+            num_attn_heads=args.num_attn_heads,
+            dropout=args.dropout,
+            pooling_dropout=args.pooling_dropout,
+            pooling_dim=args.pooling_dim
         ).to(torch.float32).to("cpu")
         self.model.load_state_dict(
             torch.load("models/model.pth", weights_only=False, map_location=torch.device('cpu')))
@@ -300,7 +327,7 @@ class ModelBenchmark(tk.Frame):
 
         ax.set_xlabel('False Positive Rate')
         ax.set_ylabel('True Positive Rate')
-        plt.title("Confusion Matrix", fontsize=16, pad=20)
+        plt.title("AUC-ROC Curve", fontsize=16, pad=20)
         ax.legend(loc='lower right')
         ax.grid(True)
 
@@ -723,31 +750,3 @@ if __name__ == '__main__':
     set_seeds(seed=0)
     app = AnalysisApp('data')
     app.mainloop()
-
-    import python_ta
-
-    python_ta.check_all(config={
-        'extra-imports': [
-            'torch',
-            'torchvision',
-            'numpy',
-            'pandas',
-            'scikit-learn',
-            'rdkit',
-            'typing',
-            'matplotlib',
-            'transformers',
-            'tqdm',
-            'argparse',
-            'tensorboard',
-            'jupyterlab',
-            'notebook',
-            'regex',
-            'xgboost',
-            'hypothesis',
-            'pytest',
-            'python-ta~=2.9.1'
-        ],
-        'allowed-io': [],
-        'max-line-length': 120
-    })
