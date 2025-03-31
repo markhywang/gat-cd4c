@@ -1,4 +1,5 @@
 """Module to benchmark the trained GAT model."""
+import argparse
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -19,6 +20,7 @@ from sklearn.metrics import (
 from src.model import GraphAttentionNetwork
 from src.utils.dataset import DrugProteinDataset
 from src.utils.helper_functions import set_seeds, accuracy_func
+from config import final_model
 
 # Set device
 DEVICE = torch.device("cpu")
@@ -32,7 +34,7 @@ def load_test_data(data_path: str, seed: int,
     """Copy the load_data function from train.py but only returns test dataest. """
 
     # Choose the appropriate file based on dataset size
-    dataset_file = '../data/filter_cancer_small.csv' if use_small_dataset else 'filtered_cancer_all.csv'
+    dataset_file = 'filter_cancer_small.csv' if use_small_dataset else 'filtered_cancer_all.csv'
     data_df = pd.read_csv(f'{data_path}/{dataset_file}')
     protein_embeddings_df = pd.read_csv(f'{data_path}/protein_embeddings.csv', index_col=0)
 
@@ -141,33 +143,7 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, huber_beta: float)
 
 def main() -> None:
     """Add training arguments and run the benchmark on the model."""
-
-    # Must match training args
-    args_dict = {
-        "use_small_dataset": False,
-        "batch_size": 64,
-        "stoppage_epochs": 64,
-        "max_epochs": 512,
-        "seed": 0,
-        "data_path": "data",
-        "frac_train": 0.8,
-        "frac_validation": 0.1,
-        "frac_test": 0.1,
-        "huber_beta": 0.5,
-        "weight_decay": 1e-3,
-        "lr": 3e-4,
-        "scheduler_patience": 10,
-        "scheduler_factor": 0.5,
-        "hidden_size": 96,
-        "num_layers": 8,
-        "num_attn_heads": 6,
-        "dropout": 0.2,
-        "pooling_dropout": 0.1,
-        "pooling_dim": 96,
-    }
-
-    import argparse
-    args = argparse.Namespace(**args_dict)
+    args = argparse.Namespace(**final_model.args_dict)
 
     # Set seeds for reproducibility
     set_seeds(seed=0)
@@ -222,6 +198,7 @@ if __name__ == "__main__":
             'torch.nn.functional',
             'torch.utils.data',
             'argparse',
+            'config',
             'src.model',
             'src.utils.dataset',
             'src.utils.helper_functions'

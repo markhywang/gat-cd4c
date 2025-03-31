@@ -26,10 +26,12 @@ import os
 
 # Import local code from src directory.
 sys.path.append(os.path.abspath("src"))
+import argparse
 from utils.dataset import DrugProteinDataset, DrugMolecule
 from utils.helper_functions import set_seeds, get_r_squared
 from utils.functional_groups import *
 from model import GraphAttentionNetwork
+from config import final_model
 
 
 class AnalysisApp(tk.Tk):
@@ -44,36 +46,9 @@ class AnalysisApp(tk.Tk):
 
     def __init__(self, data_path: str) -> None:
         super().__init__()
-
         super().title("CandidateDrug4Cancer Analysis")
 
-        # Model Arguemnts (must match those used to train model)
-        args_dict = {
-            "use_small_dataset": False,
-            "batch_size": 64,
-            "stoppage_epochs": 64,
-            "max_epochs": 512,
-            "seed": 0,
-            "data_path": "../data",
-            "frac_train": 0.8,
-            "frac_validation": 0.1,
-            "frac_test": 0.1,
-            "huber_beta": 0.5,
-            "weight_decay": 1e-3,
-            "lr": 3e-4,
-            "scheduler_patience": 10,
-            "scheduler_factor": 0.5,
-            "hidden_size": 96,
-            "num_layers": 8,
-            "num_attn_heads": 6,
-            "dropout": 0.2,
-            "pooling_dropout": 0.1,
-            "pooling_dim": 96,
-        }
-
-        import argparse
-        args = argparse.Namespace(**args_dict)
-
+        args = argparse.Namespace(**final_model.args_dict)
         data_df, protein_embeddings_df = load_data(data_path)
 
         self.model = GraphAttentionNetwork(
