@@ -89,6 +89,7 @@ class DrugMolecule:
                     # If an edge features conflict occurs, no matching subgraph can be found.
                     return []
             else:
+                # Get all the options from the drug molecule that can be used as this node.
                 curr_options = []
                 for possible_drug_node in self.neighbours[drug_node]:
                     if self._check_features_match(expected_node_features, self.node_features[possible_drug_node]):
@@ -109,9 +110,11 @@ class DrugMolecule:
             return [found_dict]
 
         final_found_dicts = []
+        # Iterate over every possible combination of choices to iterate over next.
         for combination in self._get_unique_combinations(functional_group_node_to_drug_nodes):
             functional_group_nodes = list(combination.keys())
             drug_nodes = list(combination.values())
+
             # Add the current combination being tried to found_dict.
             curr_found_dicts = [found_dict.copy() | combination]
             old_found_dicts = []
