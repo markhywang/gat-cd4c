@@ -65,11 +65,11 @@ class AnalysisApp(tk.Tk):
         molecule_viewer = MoleculeViewer(self, data_df, protein_embeddings_df, self.model)
         self.notebook.add(molecule_viewer, text="Molecule Viewer")
 
-        model_analysis = ModelAnalysis(self, data_df, protein_embeddings_df, self.model)
-        self.notebook.add(model_analysis, text="Model Analysis")
+        model_analysis = ModelBenchmark(self, data_df, protein_embeddings_df, self.model)
+        self.notebook.add(model_analysis, text="Model Benchmark")
 
 
-class ModelAnalysis(tk.Frame):
+class ModelBenchmark(tk.Frame):
     def __init__(self, root: tk.Tk, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, model: nn.Module,
                  fig_size: tuple[float, float] = (4.5, 5), canvas_size: tuple[int, int] = (360, 400)) -> None:
         super().__init__(root)
@@ -408,18 +408,19 @@ class MoleculeViewer(tk.Frame):
 
         self.submit_button = tk.Button(self.settings_frame, text="Draw Molecule", font=font,
                                        command=self._update_display)
-        self.submit_button.pack(padx=x_pad)
+        self.submit_button.pack(padx=x_pad, pady=20)
 
     def _create_mode_settings(self):
-        # by default, show node contributions.
-        self.node_contributions_mode = tk.IntVar(value=1)
-        self.functional_groups_mode = tk.IntVar(value=0)
+        # Create variables to track which mode is currently selected.
+        self.node_contributions_mode = tk.IntVar()
+        self.functional_groups_mode = tk.IntVar()
 
         node_contributions_checkbox = tk.Checkbutton(self.settings_frame, text="Show Node Contributons",
                                                      variable=self.node_contributions_mode,
                                                      command=lambda: self._toggle_mode('node_contributions'))
-        node_contributions_checkbox.pack()
+        node_contributions_checkbox.pack(pady=(20, 0))
 
+        tk.Label(self.settings_frame, text="Display Intensity").pack()
         self.node_contributions_intensity_slider = tk.Scale(self.settings_frame, from_=0.1, to=0.7,
                                                             resolution=0.05, orient="horizontal")
         self.node_contributions_intensity_slider.set(0.4)
@@ -428,7 +429,7 @@ class MoleculeViewer(tk.Frame):
         functional_groups_checkbox = tk.Checkbutton(self.settings_frame, text="Show Functional Groups",
                                                     variable=self.functional_groups_mode,
                                                     command=lambda: self._toggle_mode('functional_groups'))
-        functional_groups_checkbox.pack()
+        functional_groups_checkbox.pack(pady=(20, 0))
 
         self._create_functional_group_settings()
 
@@ -478,15 +479,15 @@ class MoleculeViewer(tk.Frame):
         row = 0
         for label, value, newline in data:
             if newline:
-                label = tk.Message(self.info_frame, text=label, font=("Arial", 10, "bold"), anchor="w", width=280)
+                label = tk.Message(self.info_frame, text=label, font=("Arial", 12, "bold"), anchor="w", width=280)
                 label.grid(row=row, column=0, sticky="w", padx=5, pady=(5, 0), columnspan=2)
-                value = tk.Message(self.info_frame, text=value, font=("Arial", 10), anchor="w", width=280)
+                value = tk.Message(self.info_frame, text=value, font=("Arial", 12), anchor="w", width=280)
                 value.grid(row=row + 1, column=0, sticky="w", padx=5, pady=(0, 5), columnspan=2)
                 row += 2
             else:
-                label = tk.Message(self.info_frame, text=label, font=("Arial", 10, "bold"), anchor="w", width=140)
+                label = tk.Message(self.info_frame, text=label, font=("Arial", 12, "bold"), anchor="w", width=140)
                 label.grid(row=row, column=0, sticky="w", padx=5, pady=5, columnspan=1)
-                value = tk.Message(self.info_frame, text=value, font=("Arial", 10), anchor="w", width=140)
+                value = tk.Message(self.info_frame, text=value, font=("Arial", 12), anchor="w", width=140)
                 value.grid(row=row, column=1, sticky="w", padx=5, pady=5)
                 row += 1
 
