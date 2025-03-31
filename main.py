@@ -768,7 +768,13 @@ class MoleculeViewer(tk.Frame):
 
 
 if __name__ == '__main__':
+    set_seeds(seed=0)
+    app = AnalysisApp('data')
+    app.mainloop()
+
     import python_ta
+    # Did not work for us (maybe PythonTA has a bug)
+    # AttributeError: 'ClassDef' object has no attribute 'value'. Did you mean: 'values'?
     python_ta.check_all(config={
         'extra-imports': [
             'tkinter',
@@ -803,7 +809,3 @@ if __name__ == '__main__':
         'allowed-io': ['load_data'],
         'max-line-length': 120,
     })
-
-    set_seeds(seed=0)
-    app = AnalysisApp('data')
-    app.mainloop()
