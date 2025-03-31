@@ -4,13 +4,15 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.model_selection import train_test_split
 
 from sklearn.metrics import (
-    accuracy_score, 
-    f1_score, 
-    precision_score, 
-    recall_score, 
-    roc_auc_score, 
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
     roc_curve
 )
 
@@ -29,8 +31,6 @@ def load_test_data(data_path: str, seed: int, frac_train: float, frac_validation
     """
     Copy the load_data function from train.py but only returns test dataest.
     """
-    import pandas as pd
-    from sklearn.model_selection import train_test_split
 
     # Choose the appropriate file based on dataset size
     dataset_file = '../data/filter_cancer_small.csv' if use_small_dataset else 'filtered_cancer_all.csv'
@@ -44,12 +44,12 @@ def load_test_data(data_path: str, seed: int, frac_train: float, frac_validation
                                                test_size=frac_validation + frac_test,
                                                stratify=data_df['stratify_col'],
                                                random_state=seed)
-    
+
     validation_df, test_df = train_test_split(remaining_df,
                                               test_size=frac_test / (frac_validation + frac_test),
                                               stratify=remaining_df['stratify_col'],
                                               random_state=seed)
-    
+
     test_df = test_df.drop(columns='stratify_col')
 
     test_dataset = DrugProteinDataset(test_df, protein_embeddings_df)
@@ -102,7 +102,7 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, deveice: torch.dev
             cum_loss += loss.item() * preds.size(0)
             all_labels.extend(pchembl_scores.cpu().numpy())
             all_preds.extend(preds.cpu().numpy())
-    
+
     avg_loss = cum_loss / len(test_loader.dataset)
     all_preds = np.array(all_preds)
     all_labels = np.array(all_labels)
@@ -120,7 +120,7 @@ def evaluate_model(model: nn.Module, test_loader: DataLoader, deveice: torch.dev
         auc_roc = roc_auc_score(binary_labels, all_preds)
     except ValueError:
         auc_roc = float('nan')
-    
+
     metrics = {
         "avg_loss": avg_loss,
         "accuracy": accuracy,
@@ -144,7 +144,7 @@ def main():
     parser.add_argument("--frac_validation", type=float, default=0.15, help="Fraction of data for validation split")
     parser.add_argument("--frac_test", type=float, default=0.15, help="Fraction of data for test split")
     parser.add_argument("--huber_beta", type=float, default=1.0, help="Beta parameter for SmoothL1Loss")
-    
+
     # Model parameters (should match those used during training)
     parser.add_argument("--in_features", type=int, default=349, help="Input feature dimension")
     parser.add_argument("--out_features", type=int, default=1, help="Output feature dimension")
@@ -172,7 +172,7 @@ def main():
         pooling_dropout=args.pooling_dropout,
         pooling_dim=args.pooling_dim
     )
-    
+
     # Load test dataset and create DataLoader
     test_dataset = load_test_data(
         args.data_path,
@@ -183,10 +183,10 @@ def main():
         use_small_dataset=args.use_small_dataset
     )
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
-    
+
     # Evaluate the model
     metrics, binary_labels, all_preds = evaluate_model(model, test_loader, device, args.huber_beta)
-    
+
     print("\n--- Evaluation Metrics ---")
     for metric, value in metrics.items():
         print(f"{metric}: {value:.5f}")
