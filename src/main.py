@@ -4,7 +4,7 @@ from tkinter import ttk
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.colors import Normalize
+import matplotlib.colors as mcolors
 
 from rdkit.Chem import AllChem
 from rdkit.Chem.Draw import rdMolDraw2D
@@ -248,7 +248,7 @@ class ModelAnalysis(tk.Frame):
         pchembl_labels = pchembl_labels[:target_data_size]
         return pchembl_preds, pchembl_labels
 
-    def _get_test_dataset(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, seed: int = 42,
+    def _get_test_dataset(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, seed: int = 0,
                           frac_validation: float = 0.15, frac_test: float = 0.15) -> DrugProteinDataset:
         data_df['stratify_col'] = data_df['Target_ID'] + "_" + data_df['label'].astype(str)
         training_df, remaining_df = train_test_split(data_df,
@@ -473,7 +473,7 @@ class MoleculeViewer(tk.Frame):
         if self.node_contributions_mode.get() == 1:
             self._display_node_contributions(mol, drawer, node_contributions)
         elif self.functional_groups_mode.get() == 1:
-            self._display_functional_groups(mol, drawer, drug_graph)
+            self._display_functional_groups(drawer, drug_graph)
 
         self.canvas.draw()
 
@@ -490,19 +490,18 @@ class MoleculeViewer(tk.Frame):
             # Create a circle around this atom to show its relative contribution to the interaction strength.
             self._create_gradient_circle(x, y, 200, color_scheme, center_alpha=abs(scaled_contribution))
 
-    def _display_functional_groups(self, mol: rdkit.Chem.Mol, drawer: rdkit.Chem.Draw.rdMolDraw2D,
-                                   drug_graph: DrugMolecule) -> None:
+    def _display_functional_groups(self, drawer: rdkit.Chem.Draw.rdMolDraw2D, drug_graph: DrugMolecule) -> None:
         for key in self.functional_groups:
             if self.functional_group_toggle[key].get() == 0:
                 continue
 
-            color_scheme = self.functional_group_color_schemes[key]
+            color = self.functional_group_colors[key]
             matches = drug_graph.find_functional_group(self.functional_groups[key])
             for match in matches:
-                nodes = set(match.values())
+                nodes = match.values()
                 for node in nodes:
                     x, y = drawer.GetDrawCoords(node)
-                    self._create_gradient_circle(x, y, 200, color_scheme)
+                    self._create_uniform_circle(x, y, 100, color, 0.2)
 
     def _create_gradient_circle(self, x: int, y: int, radius: int, color_scheme: str,
                                 center_alpha: float = 0.3, edge_alpha: float = 0) -> None:
@@ -516,7 +515,7 @@ class MoleculeViewer(tk.Frame):
         dist_from_center = np.sqrt((x_grid - x) ** 2 + (y_grid - y) ** 2)
 
         # Linearly scale the distances to be from 0 to the radius.
-        norm = Normalize(vmin=0, vmax=radius)
+        norm = mcolors.Normalize(vmin=0, vmax=radius)
         gradient = norm(dist_from_center)
         # The center should have the most intense color, fading outwars from there.
         gradient = np.clip(1 - gradient, 0, 1)
@@ -530,6 +529,38 @@ class MoleculeViewer(tk.Frame):
         rgba_colors[..., 3] = alpha_gradient
 
         # Overlay the gradient circle.
+        self.ax.imshow(
+            rgba_colors,
+            extent=(x - radius, x + radius, y - radius, y + radius),
+            origin='lower',
+            interpolation='bilinear'
+        )
+
+    def _create_uniform_circle(self, x: int, y: int, radius: int, color: str, alpha: float) -> None:
+        # Convert color string to RGB tuple.
+        rgb = mcolors.to_rgb(color)
+
+        # Create a grid for the gradient.
+        grid_size = 500
+        x_vals = np.linspace(x - radius, x + radius, grid_size)
+        y_vals = np.linspace(y - radius, y + radius, grid_size)
+        x_grid, y_grid = np.meshgrid(x_vals, y_vals)
+
+        # Compute distances from the center of the circle.
+        dist_from_center = np.sqrt((x_grid - x) ** 2 + (y_grid - y) ** 2)
+
+        # Linearly scale the distances to be from 0 to the radius.
+        norm = mcolors.Normalize(vmin=0, vmax=radius)
+        gradient = norm(dist_from_center)
+        # The center should have the most intense color, fading outwards.
+        gradient = np.clip(1 - gradient, 0, 1)
+
+        # Create an RGBA array filled with the specified color.
+        rgba_colors = np.zeros((grid_size, grid_size, 4))
+        rgba_colors[..., :3] = np.array(rgb)  # Apply the RGB color
+        rgba_colors[..., 3] = gradient * alpha  # Apply the alpha fading
+
+        # Overlay the uniform gradient circle.
         self.ax.imshow(
             rgba_colors,
             extent=(x - radius, x + radius, y - radius, y + radius),
@@ -578,7 +609,7 @@ def load_data(data_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 if __name__ == '__main__':
-    set_seeds()
+    set_seeds(seed=0)
     app = AnalysisApp('../data')
     app.mainloop()
 

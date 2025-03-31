@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 class GraphAttentionNetwork(nn.Module):
     """Graph Attention Network for learningh node representations and predicting pCHEMBL scores.
-    
+
     Instance Attributes:
         - device: The device to peform computations.
         - in_features: Dimension of input node features.
@@ -24,7 +24,7 @@ class GraphAttentionNetwork(nn.Module):
     gat_layers: nn.Module
     global_attn_pooling: nn.Module
 
-    def __init__(self, device: torch.device, in_features: int, out_features: int, num_edge_features: int,
+    def __init__(self, device: str, in_features: int, out_features: int, num_edge_features: int,
                  hidden_size: int, num_layers: int, num_attn_heads: int, dropout: float, pooling_dropout: float,
                  pooling_dim: int) -> None:
         super().__init__()
@@ -50,7 +50,7 @@ class GraphAttentionNetwork(nn.Module):
     def forward(self, node_features: torch.Tensor, edge_features: torch.Tensor,
                 adjacency_matrix: torch.Tensor) -> torch.Tensor:
         """Compute and forward pass of the GAT
-        
+
         Instance Attributes:
             - node_features: Tensor of shape [B, N, F_in] representing node features.
             - edge_features: Tensor of shape [B, N, N, F_edge] representing edge features.
@@ -75,7 +75,7 @@ class GraphAttentionNetwork(nn.Module):
 
 class GlobalAttentionPooling(nn.Module):
     """Global attention pooling layer for aggregating node features.
-    
+
     Instance Attributes:
         - in_features: Dimension of input features.
         - out_features: Dimension of output features. Defaults to 1.
@@ -123,7 +123,7 @@ class GlobalAttentionPooling(nn.Module):
 
 class GraphAttentionLayer(nn.Module):
     """Single Graph attention layer for performing message passing on graph.
-    
+
     Instance Attributes:
         - device (torch.device): The device to perform computations on.
         - in_features (int): Dimension of input node features.
@@ -148,7 +148,7 @@ class GraphAttentionLayer(nn.Module):
     dropout: nn.Module
     residual_proj: nn.Module
 
-    def __init__(self, device: torch.device, in_features: int, out_features: int,
+    def __init__(self, device: str, in_features: int, out_features: int,
                  num_edge_features: int, num_attn_heads: int = 1, dropout: float = 0.2,
                  use_leaky_relu: bool = True) -> None:
         super().__init__()
@@ -310,7 +310,7 @@ if __name__ == '__main__':
             'torch.nn',
             'torch.nn.functional'
         ],
-        'disable': ['R0914', 'E1101', 'R0913', 'R0902', 'E9959'],  
+        'disable': ['R0914', 'E1101', 'R0913', 'R0902', 'E9959'],
         # R0914 for local variable, E1101 for attributes for imported modules
         # R0913 for arguments, R0902 for instance attributes in class
         # E9959 for instance annotation
