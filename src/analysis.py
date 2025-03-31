@@ -285,3 +285,31 @@ if __name__ == '__main__':
     set_seeds()
     viewer = MoleculeViewer('../data')
     viewer.mainloop()
+
+    import python_ta
+
+    python_ta.check_all(config={
+        'extra-imports': [
+            'torch',
+            'torchvision',
+            'numpy',
+            'pandas',
+            'scikit-learn',
+            'rdkit',
+            'typing',
+            'matplotlib',
+            'transformers',
+            'tqdm',
+            'argparse',
+            'tensorboard',
+            'jupyterlab',
+            'notebook',
+            'regex',
+            'xgboost',
+            'hypothesis',
+            'pytest',
+            'python-ta~=2.9.1'
+        ],
+        'allowed-io': [],
+        'max-line-length': 120
+    })
