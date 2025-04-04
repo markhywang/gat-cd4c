@@ -24,8 +24,8 @@ class ProteinEmbedder:
         """
         Initializes ProteinEmbedder attributes
         """
-        self.tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t6_8M_UR50D")
-        self.embedder = AutoModel.from_pretrained("facebook/esm2_t6_8M_UR50D")
+        self.tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t33_650M_UR50D")
+        self.embedder = AutoModel.from_pretrained("facebook/esm2_t33_650M_UR50D")
 
     def embed(self, protein_sequence: str) -> torch.Tensor:
         """
@@ -49,7 +49,7 @@ def embed_proteins(input_filepath: str, output_filepath: str) -> None:
     protein_df = protein_df.drop_duplicates(subset='Target_ID', keep='first')
     protein_df = protein_df.set_index('Target_ID')
 
-    embedding_size = 320
+    embedding_size = 1280
     # Initialize the empty embeddings dataframe.
     embeddings_df = pd.DataFrame(columns=[f'embedding_{x}' for x in range(embedding_size)], index=protein_df.index)
     embeddings_df.index.name = 'Target_ID'
