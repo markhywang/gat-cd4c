@@ -308,6 +308,11 @@ class DrugProteinDataset(Dataset):
         """Initializes the dataset by processing input data frames."""
         super().__init__()
 
+        target_protein_id = "CHEMBL203"
+
+        # Filter the main dataframe for the desired protein.
+        data_df = data_df[data_df['Target_ID'] == target_protein_id].copy()
+
         self.size = data_df.shape[0]
 
         self.pchembl_scores = data_df['pChEMBL_Value'].tolist()
