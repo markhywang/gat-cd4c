@@ -38,7 +38,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device = device) -> No
 
     model = GraphAttentionNetwork(
         device,
-        in_features=1309,
+        in_features=1312,
         out_features=1,
         num_edge_features=16,
         hidden_size=args.hidden_size,
