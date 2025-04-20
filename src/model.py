@@ -6,6 +6,113 @@ from torch import nn
 import torch.nn.functional as F
 
 
+class GraphAttentionEncoder(nn.Module):
+    """
+    Encode a graph (drug or protein) with stacked GAT layers and global attention pooling.
+    """
+    def __init__(self,
+                 in_features: int,
+                 hidden_size: int,
+                 out_features: int,
+                 num_edge_features: int,
+                 num_layers: int,
+                 num_attn_heads: int,
+                 dropout: float,
+                 pooling_dim: int,
+                 device: torch.device):
+        super().__init__()
+        # Build GAT stack
+        layers = []
+        for i in range(num_layers):
+            in_f = in_features if i == 0 else hidden_size
+            out_f = out_features if i == num_layers - 1 else hidden_size
+            heads = 1 if i == num_layers - 1 else num_attn_heads
+            layers.append(
+                GraphAttentionLayer(device,
+                                    in_f,
+                                    out_f,
+                                    num_edge_features,
+                                    heads,
+                                    dropout,
+                                    use_leaky_relu=(i != num_layers - 1))
+            )
+        self.gat_layers = nn.Sequential(*layers)
+        # Global attention pooling
+        self.global_pool = GlobalAttentionPooling(
+            in_features=out_features,
+            out_features=out_features,
+            hidden_dim=pooling_dim,
+            dropout=dropout
+        )
+
+    def forward(self,
+                node_feats: torch.Tensor,
+                edge_feats: torch.Tensor,
+                adj: torch.Tensor) -> torch.Tensor:
+        # node_feats: [B, N, in_features]
+        # edge_feats: [B, N, N, num_edge_features]
+        # adj:        [B, N, N]
+        x, e, a = node_feats, edge_feats, adj
+        for gat in self.gat_layers:
+            x, e, a = gat((x, e, a))
+        # x: [B, N, out_features]
+        graph_emb = self.global_pool(x)     # [B, 1]
+        return graph_emb
+
+
+class DualGraphAttentionNetwork(nn.Module):
+    """
+    Combines a drug‐graph encoder and protein‐graph encoder, then an MLP for final pChEMBL prediction.
+    """
+    def __init__(self,
+                 drug_in_features: int,
+                 prot_in_features: int,
+                 hidden_size: int = 64,
+                 emb_size: int = 64,
+                 num_edge_features: int = 16,
+                 num_layers: int = 3,
+                 num_heads: int = 4,
+                 dropout: float = 0.2,
+                 pooling_dim: int = 128,
+                 mlp_hidden: int = 128,
+                 device: torch.device = torch.device("cpu")):
+        super().__init__()
+        # Drug and protein encoders
+        self.drug_encoder = GraphAttentionEncoder(
+            drug_in_features, hidden_size, emb_size, num_edge_features,
+            num_layers, num_heads, dropout, pooling_dim, device
+        )
+        self.prot_encoder = GraphAttentionEncoder(
+            prot_in_features, hidden_size, emb_size, num_edge_features,
+            num_layers, num_heads, dropout, pooling_dim, device
+        )
+        # Final MLP
+        self.mlp = nn.Sequential(
+            nn.Linear(emb_size * 2, mlp_hidden),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mlp_hidden, 1)
+        )
+
+    def forward(self,
+                drug_node_feats: torch.Tensor,
+                drug_edge_feats: torch.Tensor,
+                drug_adj: torch.Tensor,
+                prot_node_feats: torch.Tensor,
+                prot_edge_feats: torch.Tensor,
+                prot_adj: torch.Tensor) -> torch.Tensor:
+        # Encode each graph
+        drug_emb = self.drug_encoder(drug_node_feats,
+                                     drug_edge_feats,
+                                     drug_adj)           # [B]
+        prot_emb = self.prot_encoder(prot_node_feats,
+                                     prot_edge_feats,
+                                     prot_adj)           # [B]
+        # Concatenate and project
+        x = torch.cat([drug_emb, prot_emb], dim=-1)   # [B, 2]
+        return self.mlp(x).squeeze(-1)                # [B]
+
+
 class GraphAttentionNetwork(nn.Module):
     """Graph Attention Network for learning node representations and predicting pCHEMBL scores.
 
