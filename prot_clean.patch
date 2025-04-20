@@ -1,0 +1,65 @@
+diff --git a/utils/embed_proteins.py b/utils/embed_proteins.py
+index abcdef1..1234567 100644
+--- a/utils/embed_proteins.py
++++ b/utils/embed_proteins.py
+@@ -1,7 +1,18 @@
+-class ProteinGraphBuilder:
+-    def __init__(self, graph_dir="../../data/protein_graphs", cutoff=10.0):
+-        self.cutoff = cutoff
+-        self.graph_dir = graph_dir
+-        self.parser = PDBParser(QUIET=True)
++class ProteinGraphBuilder:
++    """Build *either* whole‑protein graphs (旧 behaviour) *or* pocket‑only graphs*.
++
++    New args
++    -----
++    pocket_radius : float | None
++        If given, residues whose C‑α atom is farther than this radius (Å) from **any** ligand
++        heavy‑atom will be *discarded*, giving a smaller, task‑focused graph.
++    """
++
++    def __init__(self,
++                 graph_dir: str = "../../data/protein_graphs",
++                 cutoff: float = 10.0,
++                 pocket_radius: float | None = None):
++        self.cutoff = cutoff              # edge build distance threshold (Å)
++        self.pocket_radius = pocket_radius
++        self.graph_dir = graph_dir
++        self.parser = PDBParser(QUIET=True)
+@@ -20,7 +31,8 @@
+-    def _ca_atoms(self, pdb_path):
++    def _ca_atoms(self, pdb_path):   # unchanged
+         ca = []
+         ...
+@@ -30,8 +42,23 @@
+-    def build(self, pdb_path, esm):
+-        coords = self._ca_atoms(pdb_path)
++    def _crop_to_pocket(self,
++                        coords: torch.Tensor,
++                        ligand_coords: torch.Tensor | None) -> tuple[torch.Tensor, torch.Tensor]:
++        """Return the subset of `coords` within `pocket_radius` of *any* `ligand_coords`."""
++        if ligand_coords is None or self.pocket_radius is None:
++            m = torch.ones(coords.size(0), dtype=torch.bool)
++            return coords, m
++        dist = torch.cdist(coords, ligand_coords)          # [N_res, N_lig]
++        m = (dist.min(dim=1).values < self.pocket_radius)   # [N_res]
++        return coords[m], m
++
++    def build(self,
++              pdb_path: str,
++              esm: torch.Tensor,
++              ligand_coords: torch.Tensor | None = None) -> Data:
++        coords = self._ca_atoms(pdb_path)                   # [N_res, 3]
++
++        # --- pocket cropping ----------------------------------------------
++        coords, mask = self._crop_to_pocket(coords, ligand_coords)
++        esm = esm[mask]
+@@ -39,8 +66,9 @@
+-        node_x = torch.cat([esm, coords], dim=1)
+-        dist = torch.cdist(coords, coords)
++        node_x = esm                                         # sequence representation only ⇒ 1280‑D
++        dist = torch.cdist(coords, coords)
+         mask = (dist < self.cutoff) & (dist > 0)
+         edge_index = mask.nonzero(as_tuple=False).t()
+         edge_attr = dist[mask].unsqueeze(-1)
+         return Data(x=node_x, pos=coords, edge_index=edge_index, edge_attr=edge_attr)
