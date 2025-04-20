@@ -9,7 +9,6 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch import optim, nn, amp
 import torch.nn.functional as F
-from functools import partial
 
 from model import DualGraphAttentionNetwork
 from utils.embed_proteins import ProteinGraphBuilder
@@ -28,7 +27,13 @@ def pad_to(x: torch.Tensor, shape: tuple):
     return F.pad(x, pad, mode='constant', value=0)
 
 
-def collate_drug_prot(batch, prot_graph_dir, hard_limit=256, num_edge_feats=16):
+def collate_drug_prot(
+        batch,
+        prot_graph_dir,
+        hard_limit=256,
+        drug_edge_feats=16,
+        prot_edge_feats=1):
+    
     drug_ns, drug_es, drug_as = [], [], []
     prot_ns, prot_es, prot_as = [], [], []
     labels = []
@@ -37,7 +42,7 @@ def collate_drug_prot(batch, prot_graph_dir, hard_limit=256, num_edge_feats=16):
         # — drug (same as before) —
         H = hard_limit
         drug_ns.append(pad_to(d_n, (H, d_n.size(-1))))
-        drug_es.append(pad_to(d_e, (H, H, num_edge_feats)))
+        drug_es.append(pad_to(d_e, (H, H, drug_edge_feats)))
         drug_as.append(pad_to(d_a, (H, H)))
         
         # — protein: truncate node‐features, then build DENSE adjacency & edge‐feature tensors —
@@ -54,7 +59,7 @@ def collate_drug_prot(batch, prot_graph_dir, hard_limit=256, num_edge_feats=16):
         
         # build dense adj+edge_attr
         adj = torch.zeros((H, H), dtype=torch.float32)
-        edge_t = torch.zeros((H, H, num_edge_feats), dtype=torch.float32)
+        edge_t = torch.zeros((H, H, prot_edge_feats), dtype=torch.float32)
         for j in range(p_i.size(1)):
             i0, i1 = int(p_i[0,j]), int(p_i[1,j])
             adj[i0, i1] = 1
@@ -75,7 +80,6 @@ def collate_drug_prot(batch, prot_graph_dir, hard_limit=256, num_edge_feats=16):
     )
 
 
-
 def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
     set_seeds()
     device = m_device
@@ -85,7 +89,8 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         prot_in_features=1283,
         hidden_size=args.hidden_size,
         emb_size=getattr(args, "emb_size", args.hidden_size),
-        num_edge_features=16,
+        drug_edge_features=16,
+        prot_edge_features=1,
         num_layers=args.num_layers,
         num_heads=args.num_attn_heads,
         dropout=args.dropout,
@@ -107,23 +112,31 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
 
     loader_kwargs = dict(
         batch_size=args.batch_size,
-        num_workers=1,
-        pin_memory=False,
+        num_workers=8,  # increase if CPU cores available
+        pin_memory=True,  # beneficial for CUDA
         persistent_workers=True,
-        prefetch_factor=1
+        prefetch_factor=2  # prefetch more batches
     )
 
     train_loader = DataLoader(
         train_ds,
         shuffle=True,
-        collate_fn=lambda b: collate_drug_prot(b, args.protein_graph_dir, args.max_nodes, 16),
+        collate_fn=lambda b: collate_drug_prot(
+            b, args.protein_graph_dir,
+            args.max_nodes,
+            drug_edge_feats=16,
+            prot_edge_feats=1),
         **loader_kwargs
     )
 
     val_loader = DataLoader(
-        train_ds,
+        val_ds,
         shuffle=False,
-        collate_fn=lambda b: collate_drug_prot(b, args.protein_graph_dir, args.max_nodes, 16),
+        collate_fn=lambda b: collate_drug_prot(
+            b, args.protein_graph_dir,
+            args.max_nodes,
+            drug_edge_feats=16,
+            prot_edge_feats=1),
         **loader_kwargs
     )
 
@@ -144,7 +157,9 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         ],
         index=range(args.max_epochs)
     )
+    
     scaler = torch.GradScaler(device.type)
+    
     for epoch in range(args.max_epochs):
         model.train()
         total = dict(loss=0, acc=0, mse=0, mae=0)
@@ -251,9 +266,10 @@ def get_validation_metrics(loader, model, loss_func, device):
 
     with torch.no_grad():
         for batch in loader:
-            d_n, d_e, d_a, p_n, p_e, p_a, labels = [x.to(device) for x in batch]
-            preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
-            loss = loss_func(preds, labels).item()
+            d_n, d_e, d_a, p_n, p_e, p_a, labels = [x.to(device, non_blocking=True) for x in batch]
+            with amp.autocast(device_type=device.type):
+                preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
+                loss = loss_func(preds, labels).item()
             acc = accuracy_func(preds, labels, threshold=1.0)
             mse = mse_func(preds, labels)
             mae = mae_func(preds, labels)

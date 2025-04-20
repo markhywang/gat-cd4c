@@ -69,7 +69,8 @@ class DualGraphAttentionNetwork(nn.Module):
                  prot_in_features: int,
                  hidden_size: int = 64,
                  emb_size: int = 64,
-                 num_edge_features: int = 16,
+                 drug_edge_features: int = 16,
+                 prot_edge_features: int = 1,
                  num_layers: int = 3,
                  num_heads: int = 4,
                  dropout: float = 0.2,
@@ -79,11 +80,11 @@ class DualGraphAttentionNetwork(nn.Module):
         super().__init__()
         # Drug and protein encoders
         self.drug_encoder = GraphAttentionEncoder(
-            drug_in_features, hidden_size, emb_size, num_edge_features,
+            drug_in_features, hidden_size, emb_size, drug_edge_features,
             num_layers, num_heads, dropout, pooling_dim, device
         )
         self.prot_encoder = GraphAttentionEncoder(
-            prot_in_features, hidden_size, emb_size, num_edge_features,
+            prot_in_features, hidden_size, emb_size, prot_edge_features,
             num_layers, num_heads, dropout, pooling_dim, device
         )
         # Final MLP
