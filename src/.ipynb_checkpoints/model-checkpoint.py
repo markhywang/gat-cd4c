@@ -51,7 +51,7 @@ class GPSLayer(nn.Module):
         global_out, _ = self.global_attn(local_x, local_x, local_x)
 
         # --- optional cross‑attn from `context` (other graph) ---
-        if context is not None and context.size(-1) == local_x.size(-1):
+        if context is not None and self.use_cross and context.size(-1) == local_x.size(-1):
             cross_out, _ = self.cross_attn(local_x, context, context)
         else:
             cross_out = 0
@@ -96,7 +96,8 @@ class GraphAttentionEncoder(nn.Module):
             layers.append(GPSLayer(local,
                                    embed_dim=out_f,
                                    num_heads=heads,
-                                   dropout=dropout))
+                                   dropout=dropout,
+                                   use_cross=False))
         self.gat_layers = nn.ModuleList(layers)
         # Global attention pooling
         self.global_pool = GlobalAttentionPooling(
