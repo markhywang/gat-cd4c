@@ -7,8 +7,10 @@ from tqdm import tqdm
 
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torch import optim, nn, amp
+from torch import optim, nn
+from functools import partial
 import torch.nn.functional as F
+import multiprocessing as mp
 
 from model import DualGraphAttentionNetwork
 from utils.embed_proteins import ProteinGraphBuilder
@@ -30,8 +32,8 @@ def pad_to(x: torch.Tensor, shape: tuple):
 def collate_drug_prot(
         batch,
         prot_graph_dir,
-        hard_limit=256,
-        drug_edge_feats=16,
+        hard_limit=64,
+        drug_edge_feats=17,
         prot_edge_feats=1):
     
     drug_ns, drug_es, drug_as = [], [], []
@@ -89,18 +91,19 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         prot_in_features=1283,
         hidden_size=args.hidden_size,
         emb_size=getattr(args, "emb_size", args.hidden_size),
-        drug_edge_features=16,
+        drug_edge_features=17,
         prot_edge_features=1,
         num_layers=args.num_layers,
         num_heads=args.num_attn_heads,
         dropout=args.dropout,
+        mlp_dropout=args.mlp_dropout,
         pooling_dim=args.pooling_dim,
         mlp_hidden=getattr(args, "mlp_hidden", 128),
         device=device
     ).to(device)
 
-    model = torch.compile(model, fullgraph=True)      # fuse the whole graph
-    torch._dynamo.config.dynamic_shapes = True       
+    # model = torch.compile(model, fullgraph=True)      # fuse the whole graph
+    # torch._dynamo.config.dynamic_shapes = True       
     
     print(f'Model parameters: {count_model_params(model)}')
 
@@ -110,33 +113,40 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         args.use_small_dataset, args.protein_graph_dir
     )
 
+    ctx = mp.get_context('spawn')
+
     loader_kwargs = dict(
         batch_size=args.batch_size,
         num_workers=8,  # increase if CPU cores available
         pin_memory=True,  # beneficial for CUDA
         persistent_workers=True,
-        prefetch_factor=2  # prefetch more batches
+        prefetch_factor=4, # prefetch more batches
+        multiprocessing_context=ctx,
     )
 
     train_loader = DataLoader(
         train_ds,
         shuffle=True,
-        collate_fn=lambda b: collate_drug_prot(
-            b, args.protein_graph_dir,
-            args.max_nodes,
-            drug_edge_feats=16,
-            prot_edge_feats=1),
+        collate_fn=partial(
+            collate_drug_prot,
+            prot_graph_dir=args.protein_graph_dir,
+            hard_limit=args.max_nodes,
+            drug_edge_feats=17,
+            prot_edge_feats=1
+        ),
         **loader_kwargs
     )
 
     val_loader = DataLoader(
         val_ds,
         shuffle=False,
-        collate_fn=lambda b: collate_drug_prot(
-            b, args.protein_graph_dir,
-            args.max_nodes,
-            drug_edge_feats=16,
-            prot_edge_feats=1),
+        collate_fn=partial(
+            collate_drug_prot,
+            prot_graph_dir=args.protein_graph_dir,
+            hard_limit=args.max_nodes,
+            drug_edge_feats=17,
+            prot_edge_feats=1
+        ),
         **loader_kwargs
     )
 
@@ -157,41 +167,44 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         ],
         index=range(args.max_epochs)
     )
-    
-    scaler = torch.GradScaler(device.type)
+
     
     for epoch in range(args.max_epochs):
         model.train()
         total = dict(loss=0, acc=0, mse=0, mae=0)
         samples = 0
-
+    
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.max_epochs}"):
-            d_n,d_e,d_a,p_n,p_e,p_a,labels = [x.to(device) for x in batch]
+            d_n, d_e, d_a, p_n, p_e, p_a, labels = [x.to(device) for x in batch]
             optimizer.zero_grad()
-            with amp.autocast(device_type=device.type):
-                preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
-                loss = loss_func(preds, labels)
-
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-
+    
+            # forward
+            preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
+            loss = loss_func(preds, labels)
+    
+            # backward + clip + step
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+    
+            # accumulate metrics
             n = labels.size(0)
             samples += n
-            total['loss'] += loss.item()*n
-            total['acc'] += accuracy_func(preds, labels, 1.0)
-            total['mse'] += mse_func(preds, labels)*n
-            total['mae'] += mae_func(preds, labels)*n
-
-        tl = total['loss']/samples
-        ta = total['acc']/samples
-        tm = total['mse']/samples
-        tma = total['mae']/samples
+            total['loss'] += loss.item() * n
+            total['acc']  += accuracy_func(preds, labels, 1.0)
+            total['mse']  += mse_func(preds, labels) * n
+            total['mae']  += mae_func(preds, labels) * n
+    
+        # compute epoch‐level metrics…
+        tl = total['loss'] / samples
+        ta = total['acc'] / samples
+        tm = total['mse'] / samples
+        tma = total['mae'] / samples
 
         # validation
         v_loss,v_acc,v_mse,v_mae = get_validation_metrics(val_loader, model, loss_func, device)
 
-        lr_scheduler.step(tl)
+        lr_scheduler.step(v_loss)
 
         row = [
             tl, v_loss,
@@ -202,8 +215,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         # unwrap any torch.Tensor into float
         row = [x.item() if isinstance(x, torch.Tensor) else float(x) for x in row]
         
-        metrics.loc[epoch] = row
-                
+        metrics.loc[epoch] = row     
         print(f"Epoch {epoch+1}/{args.max_epochs}: "
               f"Train Loss={tl:.5f}, MSE={tm:.5f}, MAE={tma:.5f}, Acc={ta:.5f} | "
               f"Val Loss={v_loss:.5f}, MSE={v_mse:.5f}, MAE={v_mae:.5f}, Acc={v_acc:.5f}"
@@ -220,41 +232,6 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
 
     plot_loss_curves(metrics)
 
-def run_training_epoch(progress_bar, optimizer, model, loss_func, device=torch.device("cpu")):
-    model.train()
-    total_samples = 0
-    total_loss = 0
-    total_acc = 0
-    total_mse = 0
-    total_mae = 0
-
-    scaler = amp.GradScaler(device.type)
-    for batch in progress_bar:
-        optimizer.zero_grad()
-    
-        d_n, d_e, d_a, p_n, p_e, p_a, labels = [x.to(device) for x in batch]
-        with amp.autocast(device_type=device.type):
-            preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
-            loss = loss_func(preds, labels)
-
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
-
-        n = labels.shape[0]
-        total_samples += n
-        total_loss += loss.item() * n
-        total_acc += accuracy_func(preds, labels, threshold=1.0)
-        total_mse += mse_func(preds, labels) * n
-        total_mae += mae_func(preds, labels) * n
-
-    return (
-        total_loss / total_samples,
-        total_acc / total_samples,
-        total_mse / total_samples,
-        total_mae / total_samples
-    )
-
 
 def get_validation_metrics(loader, model, loss_func, device):
     model.eval()
@@ -267,9 +244,8 @@ def get_validation_metrics(loader, model, loss_func, device):
     with torch.no_grad():
         for batch in loader:
             d_n, d_e, d_a, p_n, p_e, p_a, labels = [x.to(device, non_blocking=True) for x in batch]
-            with amp.autocast(device_type=device.type):
-                preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
-                loss = loss_func(preds, labels).item()
+            preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
+            loss = loss_func(preds, labels).item()
             acc = accuracy_func(preds, labels, threshold=1.0)
             mse = mse_func(preds, labels)
             mae = mae_func(preds, labels)
@@ -360,6 +336,8 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num_attn_heads", type=int, default=4,
                         help="Number of attention heads")
     parser.add_argument("--dropout", type=float, default=0.2,
+                        help="Dropout rate for GAT layers")
+    parser.add_argument("--mlp_dropout", type=float, default=0.2,
                         help="Dropout rate for GAT layers")
     parser.add_argument("--pooling_dim", type=int, default=128,
                         help="Hidden dim for pooling MLP")

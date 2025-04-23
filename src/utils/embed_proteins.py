@@ -56,22 +56,23 @@ AA_CHARGE: Dict[str, int] = {
 
 # ---------------------------------------------------------------------------
 class ProteinGraphBuilder:
-    """Load/construct residue‑level graphs.
+    """Build *either* whole‑protein graphs (旧 behaviour) *or* pocket‑only graphs*.
 
-    Parameters
-    ----------
-    graph_dir : str | pathlib.Path
-        Directory where ``<ID>.pt`` graphs are cached.
-    cutoff : float, optional
-        Distance threshold [Å] for *spatial* edges.  Peptide‑bond edges are
-        always included.
+    New args
+    -----
+    pocket_radius : float | None
+        If given, residues whose C‑α atom is farther than this radius (Å) from **any** ligand
+        heavy‑atom will be *discarded*, giving a smaller, task‑focused graph.
     """
 
-    def __init__(self, graph_dir: str | pathlib.Path = "../../data/protein_graphs", *, cutoff: float = 10.0):
-        self.cutoff = float(cutoff)
+    def __init__(self,
+                 graph_dir: str = "../../data/protein_graphs",
+                 cutoff: float = 10.0,
+                 pocket_radius: float | None = None):
+        self.cutoff = cutoff              # edge build distance threshold (Å)
+        self.pocket_radius = pocket_radius
         self.graph_dir = pathlib.Path(graph_dir)
         self.parser = PDBParser(QUIET=True)
-        self.graph_dir.mkdir(parents=True, exist_ok=True)
 
     # ---------------------------------------------------------------------
     # Low‑level helpers
@@ -116,14 +117,23 @@ class ProteinGraphBuilder:
             charges[i, 0] = AA_CHARGE.get(aa1, 0)
         return charges
 
-    # ---------------------------------------------------------------------
-    # Public API
-    # ---------------------------------------------------------------------
+    def _crop_to_pocket(self,
+                        coords: torch.Tensor,
+                        ligand_coords: torch.Tensor | None) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return the subset of `coords` within `pocket_radius` of *any* `ligand_coords`."""
+        if ligand_coords is None or self.pocket_radius is None:
+            m = torch.ones(coords.size(0), dtype=torch.bool)
+            return coords, m
+        dist = torch.cdist(coords, ligand_coords)          # [N_res, N_lig]
+        m = (dist.min(dim=1).values < self.pocket_radius)   # [N_res]
+        return coords[m], m
+    
     def build(
         self,
         pdb_path: str | pathlib.Path,
         seq: Optional[str] = None,
         esm: Optional[torch.Tensor] = None,
+        ligand_coords: Optional[torch.Tensor] = None,
     ) -> Data:
         """Construct a **torch_geometric** graph for the given PDB file.
 
@@ -134,28 +144,29 @@ class ProteinGraphBuilder:
         """
         pdb_path = pathlib.Path(pdb_path)
         coords, aa3 = self._extract_ca(pdb_path)
+
+        # --- pocket cropping ----------------------------------------------
+        coords, mask = self._crop_to_pocket(coords, ligand_coords)
+        aa3 = [a for a, keep in zip(aa3, mask) if keep]
         if esm is not None:
-            if coords.shape[0] != esm.shape[0]:
+            if coords.shape[0] != esm[mask].shape[0]:
                 raise ValueError("Seq/structure length mismatch for ESM embedding")
-            node_x = torch.cat([esm, coords], dim=1)
+            node_x = torch.cat([esm[mask], coords], dim=1)
         else:
-            # If sequence was given, sanity‑check length, but we rely on PDB order.
             if seq is not None and len(seq) != coords.shape[0]:
                 raise ValueError("Seq/structure length mismatch for one‑hot pathway")
             one_hot = self._aa_one_hot(aa3)
             charges = self._charges(aa3)
             node_x = torch.cat([one_hot, charges, coords], dim=1)
 
-        # --- edges ---
-        dist = torch.cdist(coords, coords)                                # [N,N]
+        dist = torch.cdist(coords, coords)
         within = (dist < self.cutoff) & (dist > 0)
-        # peptide‑bond edges (i, i+1)
         idx = torch.arange(coords.shape[0] - 1, dtype=torch.long)
         within[idx, idx + 1] = True
         within[idx + 1, idx] = True
 
-        edge_index = within.nonzero(as_tuple=False).t()                   # [2,E]
-        edge_attr = dist[within].unsqueeze(-1)                           # [E,1]
+        edge_index = within.nonzero(as_tuple=False).t()
+        edge_attr = dist[within].unsqueeze(-1)
 
         return Data(x=node_x, pos=coords, edge_index=edge_index, edge_attr=edge_attr)
 
