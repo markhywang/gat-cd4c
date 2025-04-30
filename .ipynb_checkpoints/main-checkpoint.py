@@ -1,10 +1,3 @@
-"""
-Module for displaying results of running Graph Attention Network.
-This module
-    - Runs the model on individual drug molecules
-    - Evaluate the model's performance on the test dataset
-"""
-
 import tkinter as tk
 from tkinter import ttk
 
@@ -37,7 +30,8 @@ sys.path.append(os.path.abspath("src"))
 from utils.dataset import DrugProteinDataset, DrugMolecule
 from utils.helper_functions import set_seeds, get_r_squared
 from utils.functional_groups import *
-from model import GraphAttentionNetwork
+from train import collate_drug_prot
+from model import DualGraphAttentionNetwork
 from config import final_model
 
 
@@ -82,7 +76,7 @@ class AnalysisApp(tk.Tk):
             "max_nodes": 80, # Max number of amino acids
         }
         
-        args = argparse.Namespace(**final_model.args_dict)
+        args = argparse.Namespace(**args_dict)
         data_df, protein_embeddings_df = self.load_data(data_path)
 
         self.model = DualGraphAttentionNetwork(
@@ -98,7 +92,7 @@ class AnalysisApp(tk.Tk):
             mlp_dropout=args.mlp_dropout,
             pooling_dim=args.pooling_dim,
             mlp_hidden=getattr(args, "mlp_hidden", 128),
-            device=device
+            device="cpu"
         ).to(torch.float32).to("cpu")
         self.model.load_state_dict(
             torch.load("models/model.pth", weights_only=False, map_location=torch.device('cpu')))
@@ -109,7 +103,7 @@ class AnalysisApp(tk.Tk):
         # Increase the font size and padding for the tabs.
         ttk.Style().configure("TNotebook.Tab", padding=[10, 5], font=("Arial", 10))
 
-        molecule_viewer = MoleculeViewer(self, data_df, protein_embeddings_df, self.model)
+        molecule_viewer = MoleculeViewer(self, data_df, protein_embeddings_df, self.model, max_nodes=args.max_nodes)
         self.notebook.add(molecule_viewer, text="Molecule Viewer")
 
         model_analysis = ModelBenchmark(self, data_df, protein_embeddings_df, self.model)
@@ -366,41 +360,50 @@ class ModelBenchmark(tk.Frame):
 
     def _eval_model(self, percent_data, test_dataset: DrugProteinDataset, batch_size: int = 50) \
             -> tuple[torch.Tensor, torch.Tensor]:
-        """Evaluate the model on the test data to get pChEMBL predictions.
+        """Evaluate the model on the test data to get pChEMBL predictions."""
+        # build DataLoader exactly like training
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            collate_fn=lambda b: collate_drug_prot(
+                b,
+                "data/protein_graphs",  # your protein_graph_dir
+                80,                     # hard_limit (must match max_nodes)
+                17                      # num_edge_feats
+            )
+        )
 
-        Preconditions:
-            - 0 < percent_data <= 1
-            - batch_size > 0
-            - len(test_dataset) > 0
-        """
-
-        # Choose an arbitrary batch size to prevent input from utilizing too much RAM.
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-        # Calculate the target amount of data.
         target_data_size = max(1, math.ceil(percent_data * len(test_dataset)))
-        # Calculate the number of batches that need to be processed to get the target amount of data.
         num_batches = math.ceil(target_data_size / batch_size)
 
-        # Create an empty tensor that will contain the pChEMBL predictions.
-        pchembl_preds = torch.tensor([])
-        pchembl_labels = torch.tensor([])
+        pchembl_preds = torch.tensor([], device="cpu")
+        pchembl_labels = torch.tensor([], device="cpu")
         with torch.no_grad():
             for batch_num, batch in enumerate(test_loader):
-                node_features, edge_features, adjacency_matrix, pchembl_scores = [
-                    x.to(torch.float32).to("cpu") for x in batch
-                ]
-                preds = self.model(node_features, edge_features, adjacency_matrix).squeeze(-1)
-                pchembl_preds = torch.cat((pchembl_preds, preds))
-                pchembl_labels = torch.cat((pchembl_labels, pchembl_scores))
+                # collate_drug_prot returns:
+                #   drug_ns, drug_es, drug_as,
+                #   prot_ns, prot_es, prot_as,
+                #   labels
+                d_n, d_e, d_a, p_n, p_e, p_a, labels = batch
 
-                # Stop evaluating the model if the target amount of data has already been collected.
+                # move everything to float
+                d_n, d_e, d_a = d_n.float(), d_e.float(), d_a.float()
+                p_n, p_e, p_a = p_n.float(), p_e.float(), p_a.float()
+                labels = labels.float()
+
+                # forward pass
+                preds = self.model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
+
+                # accumulate on CPU
+                pchembl_preds = torch.cat((pchembl_preds, preds.cpu()))
+                pchembl_labels = torch.cat((pchembl_labels, labels.cpu()))
+
                 if batch_num == num_batches - 1:
                     break
 
-        # Crop the data to the right size.
-        pchembl_preds = pchembl_preds[:target_data_size]
-        pchembl_labels = pchembl_labels[:target_data_size]
-        return pchembl_preds, pchembl_labels
+        # trim to exact size
+        return pchembl_preds[:target_data_size], pchembl_labels[:target_data_size]
 
     def _get_test_dataset(self, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame, seed: int = 0,
                           frac_validation: float = 0.1, frac_test: float = 0.1) -> DrugProteinDataset:
@@ -415,7 +418,7 @@ class ModelBenchmark(tk.Frame):
                                                   stratify=remaining_df['stratify_col'],
                                                   random_state=seed)
         test_df = test_df.drop(columns='stratify_col')
-        test_dataset = DrugProteinDataset(test_df, protein_embeddings_df)
+        test_dataset = DrugProteinDataset(test_df, protein_embeddings_df, "data/protein_graphs")
         return test_dataset
 
 
@@ -443,9 +446,9 @@ class MoleculeViewer(tk.Frame):
     functional_groups: dict[str, FunctionalGroup]
 
     def __init__(self, root: tk.Tk, data_df: pd.DataFrame, protein_embeddings_df: pd.DataFrame,
-                 model: nn.Module) -> None:
+                 model: nn.Module, max_nodes: int) -> None:
         super().__init__(root)
-
+        self.max_nodes = max_nodes
         # Use a white background.
         self.configure(bg="white")
 
@@ -455,7 +458,7 @@ class MoleculeViewer(tk.Frame):
         # Expand the first (and only) row across the entire window.
         self.grid_rowconfigure(0, weight=1)
 
-        self.dataset = DrugProteinDataset(data_df, protein_embeddings_df)
+        self.dataset = DrugProteinDataset(data_df, protein_embeddings_df, "data/protein_graphs")
         self.model = model
 
         # Create a dictionary that maps the pair of ChEMBL IDs to the index of that entry.
@@ -510,7 +513,7 @@ class MoleculeViewer(tk.Frame):
 
         tk.Label(self.tk_widgets['settings_frame'], text="Protein ChEMBL ID:", font=font).pack(padx=x_pad)
         self.tk_widgets['protein_dropdown'] = ttk.Combobox(
-            self.tk_widgets['settings_frame'], values=[""] + list(dict.fromkeys(self.dataset.protein_ids)),
+            self.tk_widgets['settings_frame'], values=[""] + list(dict.fromkeys(self.dataset.prot_ids)),
             state="readonly", font=font)
         self.tk_widgets['protein_dropdown'].pack(pady=(5, 20), padx=x_pad)
         self.tk_widgets['protein_dropdown'].current(0)
@@ -635,12 +638,13 @@ class MoleculeViewer(tk.Frame):
             return
 
         idx = self.pair_to_idx_mapping[(protein_chembl_id, drug_chembl_id)]
-        node_contributions, pred_pchembl = self._get_node_contributions(idx)
-        drug_graph = self.dataset.drug_graphs[idx]
-        mol = drug_graph.mol
-        actual_pchembl = self.dataset.pchembl_scores[idx]
-        drug_smiles_str = self.dataset.smiles_strs[idx]
+        # 1) get the masked‐node contributions and the masked‐out prediction
+        node_contributions, pred_pchembl, actual_pchembl = self._get_node_contributions(idx)
 
+        # 2) rebuild the RDKit Mol from the SMILES in data_df
+        drug_smiles_str = self.data_df.loc[idx, 'smiles']
+        dm = DrugMolecule(drug_smiles_str, max_nodes=self.max_nodes)
+        mol = dm.mol
         self._draw_molecule(mol, node_contributions, drug_graph)
         self._update_info_frame(str(round(actual_pchembl, 2)), str(round(pred_pchembl, 2)), drug_smiles_str)
 
@@ -763,39 +767,73 @@ class MoleculeViewer(tk.Frame):
         )
 
     def _get_node_contributions(self, idx: int) -> tuple[list[float], float]:
-        """Evaluate the model to determine which atoms contribute the most to the interaction with the protein."""
-        node_features, edge_features, adjacency_matrix, pchembl_score = self.dataset[idx]
-        # Count the number of atoms in the drug molecule (excluding atoms that were added for padding).
-        num_real_nodes = (adjacency_matrix.sum(dim=1) != 0).sum().item()
+        """
+        Evaluate the model to determine which atoms contribute most to the interaction.
+        Returns (node_contributions, real_prediction).
+        """
+        import torch
+        from torch.nn.functional import pad as torch_pad
 
-        # Add an extra dimension to allow for masking one node in each sample.
-        node_features = node_features.unsqueeze(0).repeat(num_real_nodes + 1, 1, 1)
-        edge_features = edge_features.repeat(num_real_nodes + 1, 1, 1, 1)
-        adjacency_matrix = adjacency_matrix.repeat(num_real_nodes + 1, 1, 1)
+        # 1) Unpack full dataset entry
+        d_n, d_e, d_a, p_n, p_e, p_i, lbl = self.dataset[idx]
+        # d_n: [N_drug, F_n], d_e: [N_drug, N_drug, F_e], d_a: [N_drug, N_drug]
+        # p_n: [N_prot, F_n'], p_e: [E_prot, F_e'], p_i: [2, E_prot], lbl: scalar
 
-        for i in range(num_real_nodes):
-            # Mask the node features for the ith node.
-            node_features[i, i, :] = 0.0
-            # Mask the edge features for edges connecting to the ith node.
-            edge_features[i, i, :, :] = 0.0
-            edge_features[i, :, i, :] = 0.0
-            # Mask the edges connecting to the ith node.
-            adjacency_matrix[i, i, :] = 0.0
-            adjacency_matrix[i, :, i] = 0.0
+        # 2) Count real drug atoms (non-padded rows in adjacency)
+        num_real_drug = (d_a.sum(dim=1) != 0).sum().item()
 
+        # 3) Build masked‐drug batch of size B = num_real_drug + 1
+        B = num_real_drug + 1
+        drug_ns = d_n.unsqueeze(0).repeat(B, 1, 1)          # [B, N_drug, F_n]
+        drug_es = d_e.unsqueeze(0).repeat(B, 1, 1, 1)       # [B, N_drug, N_drug, F_e]
+        drug_as = d_a.unsqueeze(0).repeat(B, 1, 1)          # [B, N_drug, N_drug]
+
+        for i in range(num_real_drug):
+            # mask out node i and its incident edges
+            drug_ns[i, i, :] = 0.0
+            drug_es[i, i, :, :] = 0.0
+            drug_es[i, :, i, :] = 0.0
+            drug_as[i, i, :] = 0.0
+            drug_as[i, :, i] = 0.0
+
+        # 4) Build **dense** protein inputs (pad/truncate to match model's max_nodes)
+        H_drug = d_n.size(0)   # your model uses fixed H = max_nodes for both graphs
+        # helper to pad a single tensor to shape (H, dim)
+        def pad_to(x, shape):
+            pad = []
+            for cur, tgt in zip(reversed(x.shape), reversed(shape)):
+                pad += [0, tgt - cur]
+            return torch.pad(x, pad)
+
+        # pad node features to [H, F_n'] and tile B times → [B, H, F_n']
+        prot_ns = pad_to(p_n, (H_drug, p_n.size(1))).unsqueeze(0).repeat(B, 1, 1)
+
+        # build dense adjacency [H, H] and edge_attrs [H, H, F_e']
+        prot_as = torch.zeros((H_drug, H_drug), dtype=torch.float32)
+        prot_es = torch.zeros((H_drug, H_drug, p_e.size(-1)), dtype=torch.float32)
+        for j in range(p_i.size(1)):
+            i0, i1 = int(p_i[0, j]), int(p_i[1, j])
+            if i0 < H_drug and i1 < H_drug:
+                prot_as[i0, i1] = 1.0
+                prot_es[i0, i1] = p_e[j]
+        # tile to [B, H, H] and [B, H, H, F_e']
+        prot_as = prot_as.unsqueeze(0).repeat(B, 1, 1)
+        prot_es = prot_es.unsqueeze(0).repeat(B, 1, 1, 1)
+
+        # 5) Run model on both drug **and** protein batches
         with torch.no_grad():
-            preds = self.model(node_features, edge_features, adjacency_matrix).squeeze(-1).tolist()
-        # The real pChEMBL prediction uses the whole drug graph without masking any nodes.
+            preds = self.model(
+                drug_ns, drug_es, drug_as,
+                prot_ns, prot_es, prot_as
+            ).squeeze(-1).tolist()  # length B
+
+        # last entry is the “unmasked” prediction
         real_pred = preds.pop()
-        node_contributions = []
-        for x in preds:
-            # The contribution of a node is given by the change in the pChEMBL prediction when that
-            # node is masked (e.g. if the prediction drops when the node is masked, then the node has
-            # a positive contribution).
-            node_contributions.append(real_pred - x)
+
+        # 6) Contribution of node i = real_pred – pred_with_node_i_masked
+        node_contributions = [real_pred - masked_pred for masked_pred in preds]
 
         return node_contributions, real_pred
-
 
 if __name__ == '__main__':
     set_seeds(seed=0)

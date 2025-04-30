@@ -14,72 +14,10 @@ import multiprocessing as mp
 
 from model import DualGraphAttentionNetwork
 from utils.embed_proteins import ProteinGraphBuilder
-from utils.dataset import DrugProteinDataset
+from utils.dataset import DrugProteinDataset, collate_drug_prot
 from utils.helper_functions import set_seeds, count_model_params, plot_loss_curves, accuracy_func, mse_func, mae_func
 
 torch.set_float32_matmul_precision('high')
-
-# ----------------------------------------------------------------------------
-# Collation helper
-# ----------------------------------------------------------------------------
-def pad_to(x: torch.Tensor, shape: tuple):
-    pad = []
-    for cur, tgt in zip(reversed(x.shape), reversed(shape)):
-        pad += [0, tgt - cur]
-    return F.pad(x, pad, mode='constant', value=0)
-
-
-def collate_drug_prot(
-        batch,
-        prot_graph_dir,
-        hard_limit=64,
-        drug_edge_feats=17,
-        prot_edge_feats=1):
-    
-    drug_ns, drug_es, drug_as = [], [], []
-    prot_ns, prot_es, prot_as = [], [], []
-    labels = []
-    
-    for d_n, d_e, d_a, p_n, p_e, p_i, label in batch:
-        # — drug (same as before) —
-        H = hard_limit
-        drug_ns.append(pad_to(d_n, (H, d_n.size(-1))))
-        drug_es.append(pad_to(d_e, (H, H, drug_edge_feats)))
-        drug_as.append(pad_to(d_a, (H, H)))
-        
-        # — protein: truncate node‐features, then build DENSE adjacency & edge‐feature tensors —
-        N = p_n.size(0)
-        if N > H:
-            mask = (p_i[0] < H) & (p_i[1] < H)
-            p_i = p_i[:, mask]
-            p_e = p_e[mask]
-            p_n = p_n[:H]
-            N = H
-        
-        # pad node feats
-        prot_ns.append(pad_to(p_n, (H, p_n.size(1))))
-        
-        # build dense adj+edge_attr
-        adj = torch.zeros((H, H), dtype=torch.float32)
-        edge_t = torch.zeros((H, H, prot_edge_feats), dtype=torch.float32)
-        for j in range(p_i.size(1)):
-            i0, i1 = int(p_i[0,j]), int(p_i[1,j])
-            adj[i0, i1] = 1
-            edge_t[i0, i1] = p_e[j]
-        prot_as.append(adj)
-        prot_es.append(edge_t)
-        
-        labels.append(label)
-    
-    return (
-        torch.stack(drug_ns),      # [B, H, Fₙ_drug]
-        torch.stack(drug_es),      # [B, H, H, Fₑ_drug]
-        torch.stack(drug_as),      # [B, H, H]
-        torch.stack(prot_ns),      # [B, H, Fₙ_prot]
-        torch.stack(prot_es),      # [B, H, H, Fₑ_prot]
-        torch.stack(prot_as),      # [B, H, H]
-        torch.tensor(labels, dtype=torch.float32)  # [B]
-    )
 
 
 def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
@@ -90,7 +28,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         drug_in_features=29,
         prot_in_features=1283,
         hidden_size=args.hidden_size,
-        emb_size=getattr(args, "emb_size", args.hidden_size),
+        emb_size=args.emb_size,
         drug_edge_features=17,
         prot_edge_features=1,
         num_layers=args.num_layers,
@@ -98,7 +36,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         dropout=args.dropout,
         mlp_dropout=args.mlp_dropout,
         pooling_dim=args.pooling_dim,
-        mlp_hidden=getattr(args, "mlp_hidden", 128),
+        mlp_hidden=args.mlp_hidden,
         device=device
     ).to(device)
 
@@ -175,11 +113,11 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         samples = 0
     
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.max_epochs}"):
-            d_n, d_e, d_a, p_n, p_e, p_a, labels = [x.to(device) for x in batch]
+            d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a, labels = [x.to(device) for x in batch]
             optimizer.zero_grad()
     
             # forward
-            preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
+            preds = model(d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a).squeeze(-1)
             loss = loss_func(preds, labels)
     
             # backward + clip + step
@@ -224,7 +162,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         if v_loss < best_val:
             best_val = v_loss
             no_imp = 0
-            torch.save(model.state_dict(), '../models/model.pth')
+            torch.save(model.state_dict(), args.model_path)
         else:
             no_imp += 1
             if no_imp >= args.stoppage_epochs:
@@ -243,8 +181,8 @@ def get_validation_metrics(loader, model, loss_func, device):
 
     with torch.no_grad():
         for batch in loader:
-            d_n, d_e, d_a, p_n, p_e, p_a, labels = [x.to(device, non_blocking=True) for x in batch]
-            preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
+            d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a, labels = [x.to(device, non_blocking=True) for x in batch]
+            preds = model(d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a).squeeze(-1)
             loss = loss_func(preds, labels).item()
             acc = accuracy_func(preds, labels, threshold=1.0)
             mse = mse_func(preds, labels)

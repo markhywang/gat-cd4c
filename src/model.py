@@ -5,6 +5,23 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
+
+class FeaturePrep(nn.Module):
+    """
+    Concatenate a learnable embedding (e.g. atomic number or residue type)
+    in front of the dense node-feature vector.
+    """
+    def __init__(self, num_types: int, emb_dim: int):
+        super().__init__()
+        self.embed = nn.Embedding(num_types, emb_dim)
+
+    def forward(self, ids: torch.Tensor, feats: torch.Tensor) -> torch.Tensor:
+        # ids:  [B, N]   (long)
+        # feats:[B, N, F] (float)
+        emb = self.embed(ids)              # [B, N, emb_dim]
+        return torch.cat([emb, feats], dim=-1)
+
+
 # -----------------------------------------------------------------------------
 # GPSLayer: combine local GAT with global self-attention in one residual block
 # -----------------------------------------------------------------------------
@@ -15,24 +32,24 @@ class GPSLayer(nn.Module):
                  embed_dim: int,
                  num_heads: int,
                  dropout: float,
-                 use_cross: bool = False):
+                 use_cross: bool):
         super().__init__()
         self.local = local_layer
         self.global_attn = nn.MultiheadAttention(embed_dim, num_heads,
                                                  dropout=dropout,
                                                  batch_first=True)
-        self.cross_attn  = nn.MultiheadAttention(embed_dim, num_heads,
-                                                 dropout=dropout,
-                                                 batch_first=True)
+
         self.use_cross = use_cross
         if use_cross:
             # cross-attn: query self, key/value other
             self.cross_attn = nn.MultiheadAttention(embed_dim, num_heads,
                                                      dropout=dropout,
                                                      batch_first=True)
+
+        self.norm = nn.LayerNorm(embed_dim)
         self.mlp = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
-            nn.ReLU(),
+            nn.CELU(),
             nn.Dropout(dropout),
             nn.Linear(embed_dim, embed_dim),
         )
@@ -51,7 +68,7 @@ class GPSLayer(nn.Module):
         global_out, _ = self.global_attn(local_x, local_x, local_x)
 
         # --- optional cross‑attn from `context` (other graph) ---
-        if context is not None and self.use_cross and context.size(-1) == local_x.size(-1):
+        if self.use_cross and context is not None and context.size(-1) == local_x.size(-1):
             cross_out, _ = self.cross_attn(local_x, context, context)
         else:
             cross_out = 0
@@ -60,6 +77,7 @@ class GPSLayer(nn.Module):
         res = (self.local.residual_proj(residual)
                if hasattr(self.local, 'residual_proj') else local_x)
         fused = res + local_x + global_out + cross_out
+        fused = self.norm(fused)
         out = self.mlp(fused)
         return out, edge, adj
 
@@ -97,7 +115,7 @@ class GraphAttentionEncoder(nn.Module):
                                    embed_dim=out_f,
                                    num_heads=heads,
                                    dropout=dropout,
-                                   use_cross=False))
+                                   use_cross=True))
         self.gat_layers = nn.ModuleList(layers)
         # Global attention pooling
         self.global_pool = GlobalAttentionPooling(
@@ -138,17 +156,28 @@ class DualGraphAttentionNetwork(nn.Module):
                  mlp_dropout: float = 0.2,
                  pooling_dim: int = 128,
                  mlp_hidden: int = 128,
-                 device: torch.device = torch.device("cpu")):
+                 device: torch.device = torch.device("cpu"),
+                 z_emb_dim: int = 16,                # NEW
+                 num_atom_types: int = 100,          # NEW
+                 num_res_types: int  = 40):          # NEW
         super().__init__()
-        # Drug and protein encoders
+
+        # --- prepend learnable ID embeddings ---
+        self.drug_feat_prep = FeaturePrep(num_atom_types, z_emb_dim)
+        self.prot_feat_prep = FeaturePrep(num_res_types,  z_emb_dim)
+
+        # Drug and protein encoders (input dim += z_emb_dim)
         self.drug_encoder = GraphAttentionEncoder(
-            drug_in_features, hidden_size, emb_size, drug_edge_features,
-            num_layers, num_heads, dropout, pooling_dim, device
+            drug_in_features + z_emb_dim, hidden_size, emb_size,
+            drug_edge_features, num_layers, num_heads,
+            dropout, pooling_dim, device
         )
         self.prot_encoder = GraphAttentionEncoder(
-            prot_in_features, hidden_size, emb_size, prot_edge_features,
-            num_layers, num_heads, dropout, pooling_dim, device
+            prot_in_features + z_emb_dim, hidden_size, emb_size,
+            prot_edge_features, num_layers, num_heads,
+            dropout, pooling_dim, device
         )
+
         # Final MLP
         self.mlp = nn.Sequential(
             nn.Linear(emb_size * 2, mlp_hidden),
@@ -161,32 +190,37 @@ class DualGraphAttentionNetwork(nn.Module):
         )
 
     def forward(self,
-                drug_node_feats: torch.Tensor,
+                drug_atomic_ids: torch.Tensor,     # [B, N] (long)
+                drug_node_feats: torch.Tensor,     # [B, N, F_d]
                 drug_edge_feats: torch.Tensor,
                 drug_adj: torch.Tensor,
-                prot_node_feats: torch.Tensor,
+                prot_res_ids: torch.Tensor,        # [B, N] (long)
+                prot_node_feats: torch.Tensor,     # [B, N, F_p]
                 prot_edge_feats: torch.Tensor,
                 prot_adj: torch.Tensor) -> torch.Tensor:
-        # Encode each graph
-        # initialize per‑graph hidden states
-        d_x, d_e, d_a = drug_node_feats, drug_edge_feats, drug_adj
-        p_x, p_e, p_a = prot_node_feats, prot_edge_feats, prot_adj
 
-        # step through each GPS layer in lock‑step, passing
-        # drug’s emb as context to protein and vice versa
+        # --- prepend embeddings ---
+        d_x = self.drug_feat_prep(drug_atomic_ids, drug_node_feats)
+        p_x = self.prot_feat_prep(prot_res_ids,  prot_node_feats)
+        d_e, d_a = drug_edge_feats, drug_adj
+        p_e, p_a = prot_edge_feats, prot_adj
+
+        # --- coupled GPS encoder ---
         for d_layer, p_layer in zip(self.drug_encoder.gat_layers,
                                     self.prot_encoder.gat_layers):
             d_x, d_e, d_a = d_layer((d_x, d_e, d_a), context=p_x)
             p_x, p_e, p_a = p_layer((p_x, p_e, p_a), context=d_x)
 
-        # final pooled embeddings
-        drug_emb = self.drug_encoder.global_pool(d_x)
-        prot_emb = self.prot_encoder.global_pool(p_x)
-        # Concatenate and project
-        x = torch.cat([drug_emb, prot_emb], dim=-1)   # [B, 2]
-        return self.mlp(x).squeeze(-1)                # [B]
+        # --- global pooling ---
+        drug_emb = self.drug_encoder.global_pool(d_x)   # [B, emb_size]
+        prot_emb = self.prot_encoder.global_pool(p_x)   # [B, emb_size]
 
+        # --- prediction head ---
+        x = torch.cat([drug_emb, prot_emb], dim=-1)     # [B, 2*emb_size]
+        score = self.mlp(x).squeeze(-1)                 # [B]
+        return score
 
+        
 class GraphAttentionNetwork(nn.Module):
     """Graph Attention Network for learning node representations and predicting pCHEMBL scores.
 
