@@ -433,6 +433,9 @@ class GraphAttentionLayer(nn.Module):
         self.attn_matrix = nn.Parameter(torch.empty((num_attn_heads, 2 * self.head_size + num_edge_features)))
         self.attn_leaky_relu = nn.LeakyReLU(0.2)
 
+        # Post-attention LayerNorm
+        self.layer_norm_out = nn.LayerNorm(out_features)
+
         # Final MLP layer
         self.out_node_projection = nn.Linear(out_features, out_features)
         self.dropout = nn.Dropout(dropout)
@@ -489,6 +492,9 @@ class GraphAttentionLayer(nn.Module):
         # Optionally apply activation.
         if self.use_leaky_relu:
             new_node_features = self.leaky_relu(new_node_features)
+        
+        # Post norm
+        new_node_features = self.layer_norm_out(new_node_features)
 
         return new_node_features, new_edge_features, adjacency_matrix
 
