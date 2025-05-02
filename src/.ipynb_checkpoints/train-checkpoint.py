@@ -55,7 +55,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
 
     loader_kwargs = dict(
         batch_size=args.batch_size,
-        num_workers=6,  # increase if CPU cores available
+        num_workers=8,  # increase if CPU cores available
         pin_memory=True,  # beneficial for CUDA
         persistent_workers=True,
         prefetch_factor=4, # prefetch more batches

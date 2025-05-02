@@ -253,11 +253,11 @@ class DrugProteinDataset(Dataset):
     def __len__(self):
         return len(self.pchembl)
 
-    @lru_cache(maxsize=4096)
+    @lru_cache(maxsize=8192)
     def load_drug(self, smiles: str):
         return DrugMolecule(smiles, self.max_nodes, self.include_3d).to_tensors()
 
-    @lru_cache(maxsize=128)
+    @lru_cache(maxsize=256)
     def load_protein(self, pid: str):
         return self.builder.load(pid)
 

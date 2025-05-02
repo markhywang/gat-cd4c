@@ -22,6 +22,37 @@ class FeaturePrep(nn.Module):
         return torch.cat([emb, feats], dim=-1)
 
 
+class CoAttention(nn.Module):
+    def __init__(self, embed_dim, num_heads, dropout=0.1):
+        super().__init__()
+        # MultiheadAttention expects (L, B, D), we’ll treat batch=1 and transpose
+        self.drug2prot = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
+        self.prot2drug = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
+        self.norm_drug = nn.LayerNorm(embed_dim)
+        self.norm_prot = nn.LayerNorm(embed_dim)
+    
+    def forward(self, drug_feats, prot_feats):
+        """
+        drug_feats:  Tensor of shape (N_drug, D)
+        prot_feats:  Tensor of shape (N_prot, D)
+        returns updated (drug_feats, prot_feats) of same shapes
+        """
+        # add batch dim: (L, B, D) with B=1
+        d = drug_feats.unsqueeze(1)    # (N_drug, 1, D)
+        p = prot_feats.unsqueeze(1)    # (N_prot, 1, D)
+        
+        # Drug attends to Protein
+        # Query=d, Key=Value=p
+        attn_dp, _ = self.drug2prot(query=d, key=p, value=p)
+        drug_updated = self.norm_drug(d + attn_dp).squeeze(1)  # residual + LN → (N_drug, D)
+        
+        # Protein attends to Drug
+        attn_pd, _ = self.prot2drug(query=p, key=d, value=d)
+        prot_updated = self.norm_prot(p + attn_pd).squeeze(1)  # → (N_prot, D)
+        
+        return drug_updated, prot_updated
+
+
 # -----------------------------------------------------------------------------
 # GPSLayer: combine local GAT with global self-attention in one residual block
 # -----------------------------------------------------------------------------
@@ -178,6 +209,9 @@ class DualGraphAttentionNetwork(nn.Module):
             dropout, pooling_dim, device
         )
 
+        # co-attention module between graphs
+        self.co_attn = CoAttention(embed_dim=emb_size, num_heads=num_heads, dropout=dropout)
+
         # Final MLP
         self.mlp = nn.Sequential(
             nn.Linear(emb_size * 2, mlp_hidden),
@@ -210,6 +244,19 @@ class DualGraphAttentionNetwork(nn.Module):
                                     self.prot_encoder.gat_layers):
             d_x, d_e, d_a = d_layer((d_x, d_e, d_a), context=p_x)
             p_x, p_e, p_a = p_layer((p_x, p_e, p_a), context=d_x)
+        
+        # --- integrate CoAttention on node-level features ---
+        B = d_x.size(0)
+        updated_drug, updated_prot = [], []
+        for batch in range(B):
+            d_feats, p_feats = d_x[batch], p_x[batch]
+            d_up, p_up = self.co_attn(d_feats, p_feats)
+            updated_drug.append(d_up)
+            updated_prot.append(p_up)
+        
+        # stack back to [B, N, D]
+        d_x = torch.stack(updated_drug, dim=0)
+        p_x = torch.stack(updated_prot, dim=0)
 
         # --- global pooling ---
         drug_emb = self.drug_encoder.global_pool(d_x)   # [B, emb_size]
@@ -386,6 +433,9 @@ class GraphAttentionLayer(nn.Module):
         self.attn_matrix = nn.Parameter(torch.empty((num_attn_heads, 2 * self.head_size + num_edge_features)))
         self.attn_leaky_relu = nn.LeakyReLU(0.2)
 
+        # Post-attention LayerNorm
+        self.layer_norm_out = nn.LayerNorm(out_features)
+
         # Final MLP layer
         self.out_node_projection = nn.Linear(out_features, out_features)
         self.dropout = nn.Dropout(dropout)
@@ -442,6 +492,9 @@ class GraphAttentionLayer(nn.Module):
         # Optionally apply activation.
         if self.use_leaky_relu:
             new_node_features = self.leaky_relu(new_node_features)
+        
+        # Post norm
+        new_node_features = self.layer_norm_out(new_node_features)
 
         return new_node_features, new_edge_features, adjacency_matrix
 
