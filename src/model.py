@@ -26,31 +26,29 @@ class CoAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout=0.1):
         super().__init__()
         # MultiheadAttention expects (L, B, D), we’ll treat batch=1 and transpose
-        self.drug2prot = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
-        self.prot2drug = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
+        self.drug2prot = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
+        self.prot2drug = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.norm_drug = nn.LayerNorm(embed_dim)
         self.norm_prot = nn.LayerNorm(embed_dim)
     
     def forward(self, drug_feats, prot_feats):
         """
-        drug_feats:  Tensor of shape (N_drug, D)
-        prot_feats:  Tensor of shape (N_prot, D)
-        returns updated (drug_feats, prot_feats) of same shapes
+        drug_feats: Tensor of shape (B, N_d, D)
+        prot_feats: Tensor of shape (B, N_p, D)
         """
-        # add batch dim: (L, B, D) with B=1
-        d = drug_feats.unsqueeze(1)    # (N_drug, 1, D)
-        p = prot_feats.unsqueeze(1)    # (N_prot, 1, D)
-        
-        # Drug attends to Protein
-        # Query=d, Key=Value=p
-        attn_dp, _ = self.drug2prot(query=d, key=p, value=p)
-        drug_updated = self.norm_drug(d + attn_dp).squeeze(1)  # residual + LN → (N_drug, D)
-        
+        # Drug attends to Protein (batch of queries, keys, values)
+        d_up, _ = self.drug2prot(query=drug_feats,
+                                 key=prot_feats,
+                                 value=prot_feats)
+        d_up = self.norm_drug(d_up + drug_feats)
+
         # Protein attends to Drug
-        attn_pd, _ = self.prot2drug(query=p, key=d, value=d)
-        prot_updated = self.norm_prot(p + attn_pd).squeeze(1)  # → (N_prot, D)
-        
-        return drug_updated, prot_updated
+        p_up, _ = self.prot2drug(query=prot_feats,
+                                 key=drug_feats,
+                                 value=drug_feats)
+        p_up = self.norm_prot(p_up + prot_feats)
+
+        return d_up, p_up
 
 
 # -----------------------------------------------------------------------------
@@ -246,17 +244,19 @@ class DualGraphAttentionNetwork(nn.Module):
             p_x, p_e, p_a = p_layer((p_x, p_e, p_a), context=d_x)
         
         # --- integrate CoAttention on node-level features ---
-        B = d_x.size(0)
-        updated_drug, updated_prot = [], []
-        for batch in range(B):
-            d_feats, p_feats = d_x[batch], p_x[batch]
-            d_up, p_up = self.co_attn(d_feats, p_feats)
-            updated_drug.append(d_up)
-            updated_prot.append(p_up)
+        # B = d_x.size(0)
+        # updated_drug, updated_prot = [], []
+        # for batch in range(B):
+        #     d_feats, p_feats = d_x[batch], p_x[batch]
+        #     d_up, p_up = self.co_attn(d_feats, p_feats)
+        #     updated_drug.append(d_up)
+        #     updated_prot.append(p_up)
         
-        # stack back to [B, N, D]
-        d_x = torch.stack(updated_drug, dim=0)
-        p_x = torch.stack(updated_prot, dim=0)
+        # # stack back to [B, N, D]
+        # d_x = torch.stack(updated_drug, dim=0)
+        # p_x = torch.stack(updated_prot, dim=0)
+
+        d_x, p_x = self.co_attn(d_x, p_x)
 
         # --- global pooling ---
         drug_emb = self.drug_encoder.global_pool(d_x)   # [B, emb_size]
