@@ -1,5 +1,3 @@
-"""Module for implementing Graph Attention Networks (GAT) components."""
-
 import math
 import torch
 from torch import nn, Tensor
@@ -25,34 +23,37 @@ class FeaturePrep(nn.Module):
 class CoAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout=0.1):
         super().__init__()
-        # MultiheadAttention expects (L, B, D), we’ll treat batch=1 and transpose
+        # MultiheadAttention expects (L, B, D), we’ll treat batch=1 and batch_first=True
         self.drug2prot = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.prot2drug = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.norm_drug = nn.LayerNorm(embed_dim)
         self.norm_prot = nn.LayerNorm(embed_dim)
-    
+        # learnable gating for attention contributions
+        self.alpha = nn.Parameter(torch.tensor(0.5))
+
     def forward(self, drug_feats, prot_feats):
         """
         drug_feats: Tensor of shape (B, N_d, D)
         prot_feats: Tensor of shape (B, N_p, D)
         """
         # Drug attends to Protein (batch of queries, keys, values)
-        d_up, _ = self.drug2prot(query=drug_feats,
-                                 key=prot_feats,
-                                 value=prot_feats)
-        d_up = self.norm_drug(d_up + drug_feats)
+        d_attn, _ = self.drug2prot(query=drug_feats,
+                                   key=prot_feats,
+                                   value=prot_feats)
+        # gated residual update
+        d_up = self.norm_drug(drug_feats + self.alpha * d_attn)
 
         # Protein attends to Drug
-        p_up, _ = self.prot2drug(query=prot_feats,
-                                 key=drug_feats,
-                                 value=drug_feats)
-        p_up = self.norm_prot(p_up + prot_feats)
+        p_attn, _ = self.prot2drug(query=prot_feats,
+                                   key=drug_feats,
+                                   value=drug_feats)
+        p_up = self.norm_prot(prot_feats + self.alpha * p_attn)
 
         return d_up, p_up
 
 
 # -----------------------------------------------------------------------------
-# GPSLayer: combine local GAT with global self-attention in one residual block
+# GPSLayer: combine local GAT with global self-attention + optional cross-attention
 # -----------------------------------------------------------------------------
 class GPSLayer(nn.Module):
     """Combine local GAT with global self-attention + optional cross-attention."""
@@ -75,6 +76,8 @@ class GPSLayer(nn.Module):
                                                      dropout=dropout,
                                                      batch_first=True)
 
+        # gating for global + cross contributions
+        self.gamma = nn.Parameter(torch.tensor(0.5))
         self.norm = nn.LayerNorm(embed_dim)
         self.mlp = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
@@ -94,18 +97,18 @@ class GPSLayer(nn.Module):
         local_x, edge, adj = self.local((x, edge, adj))
 
         # --- global self‑attn ---
-        global_out, _ = self.global_attn(local_x, local_x, local_x)
+        g_out, _ = self.global_attn(local_x, local_x, local_x)
 
         # --- optional cross‑attn from `context` (other graph) ---
         if self.use_cross and context is not None and context.size(-1) == local_x.size(-1):
-            cross_out, _ = self.cross_attn(local_x, context, context)
+            c_out, _ = self.cross_attn(local_x, context, context)
         else:
-            cross_out = 0
+            c_out = torch.zeros_like(local_x)
 
-        # --- fuse and MLP ---
+        # --- gated fusion and MLP ---
         res = (self.local.residual_proj(residual)
                if hasattr(self.local, 'residual_proj') else local_x)
-        fused = res + local_x + global_out + cross_out
+        fused = res + local_x + self.gamma * g_out + self.gamma * c_out
         fused = self.norm(fused)
         out = self.mlp(fused)
         return out, edge, adj
@@ -132,7 +135,6 @@ class GraphAttentionEncoder(nn.Module):
             in_f = in_features if i == 0 else hidden_size
             out_f = out_features if i == num_layers - 1 else hidden_size
             heads = 1 if i == num_layers - 1 else num_attn_heads
-            # wrap the standard GAT layer into a GPS layer
             local = GraphAttentionLayer(device,
                                         in_f,
                                         out_f,
@@ -146,7 +148,6 @@ class GraphAttentionEncoder(nn.Module):
                                    dropout=dropout,
                                    use_cross=True))
         self.gat_layers = nn.ModuleList(layers)
-        # Global attention pooling
         self.global_pool = GlobalAttentionPooling(
             in_features=out_features,
             out_features=out_features,
@@ -158,13 +159,11 @@ class GraphAttentionEncoder(nn.Module):
                 node_feats: torch.Tensor,
                 edge_feats: torch.Tensor,
                 adj: torch.Tensor,
-                context: torch.Tensor | None = None  # <— optional cross‑graph context
+                context: torch.Tensor | None = None
                 ) -> torch.Tensor:
         x, e, a = node_feats, edge_feats, adj
         for layer in self.gat_layers:
-            # pass the other graph’s node‑embeddings in as `context`
             x, e, a = layer((x, e, a), context=context)
-        # now pool down to a single graph embedding
         return self.global_pool(x)
 
 
@@ -191,11 +190,9 @@ class DualGraphAttentionNetwork(nn.Module):
                  num_res_types: int  = 40):          # NEW
         super().__init__()
 
-        # --- prepend learnable ID embeddings ---
         self.drug_feat_prep = FeaturePrep(num_atom_types, z_emb_dim)
         self.prot_feat_prep = FeaturePrep(num_res_types,  z_emb_dim)
 
-        # Drug and protein encoders (input dim += z_emb_dim)
         self.drug_encoder = GraphAttentionEncoder(
             drug_in_features + z_emb_dim, hidden_size, emb_size,
             drug_edge_features, num_layers, num_heads,
@@ -231,38 +228,22 @@ class DualGraphAttentionNetwork(nn.Module):
                 prot_edge_feats: torch.Tensor,
                 prot_adj: torch.Tensor) -> torch.Tensor:
 
-        # --- prepend embeddings ---
         d_x = self.drug_feat_prep(drug_atomic_ids, drug_node_feats)
         p_x = self.prot_feat_prep(prot_res_ids,  prot_node_feats)
         d_e, d_a = drug_edge_feats, drug_adj
         p_e, p_a = prot_edge_feats, prot_adj
 
-        # --- coupled GPS encoder ---
         for d_layer, p_layer in zip(self.drug_encoder.gat_layers,
                                     self.prot_encoder.gat_layers):
             d_x, d_e, d_a = d_layer((d_x, d_e, d_a), context=p_x)
             p_x, p_e, p_a = p_layer((p_x, p_e, p_a), context=d_x)
-        
-        # --- integrate CoAttention on node-level features ---
-        # B = d_x.size(0)
-        # updated_drug, updated_prot = [], []
-        # for batch in range(B):
-        #     d_feats, p_feats = d_x[batch], p_x[batch]
-        #     d_up, p_up = self.co_attn(d_feats, p_feats)
-        #     updated_drug.append(d_up)
-        #     updated_prot.append(p_up)
-        
-        # # stack back to [B, N, D]
-        # d_x = torch.stack(updated_drug, dim=0)
-        # p_x = torch.stack(updated_prot, dim=0)
 
+        # integrate gated CoAttention on node-level features
         d_x, p_x = self.co_attn(d_x, p_x)
 
-        # --- global pooling ---
         drug_emb = self.drug_encoder.global_pool(d_x)   # [B, emb_size]
         prot_emb = self.prot_encoder.global_pool(p_x)   # [B, emb_size]
 
-        # --- prediction head ---
         x = torch.cat([drug_emb, prot_emb], dim=-1)     # [B, 2*emb_size]
         score = self.mlp(x).squeeze(-1)                 # [B]
         return score
