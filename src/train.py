@@ -2,6 +2,7 @@ import math
 import argparse
 import pandas as pd
 import contextlib
+import os
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
@@ -96,16 +97,28 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
 
     best_val = float('inf')
     no_imp = 0
+
+    columns = [
+        'train_loss',     'validation_loss',
+        'train_acc',      'validation_acc',
+        'train_mse',      'validation_mse',
+        'train_mae',      'validation_mae'
+    ]
+    
     metrics = pd.DataFrame(
-        columns=[
-            'train_loss',     'validation_loss',
-            'train_acc',      'validation_acc',
-            'train_mse',      'validation_mse',
-            'train_mae',      'validation_mae'
-        ],
+        columns=columns,
         index=range(args.max_epochs)
     )
 
+    # Clear metrics csv
+    csv_path = f"{args.model_path}.csv"
+    
+    # 1) Remove any old file
+    if os.path.exists(csv_path):
+        os.remove(csv_path)
+
+    # Write correct headers
+    pd.DataFrame(columns=columns).to_csv(csv_path, index=False)
     
     for epoch in range(args.max_epochs):
         model.train()
@@ -167,8 +180,10 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
             no_imp += 1
             if no_imp >= args.stoppage_epochs:
                 break
-
-    plot_loss_curves(metrics)
+    
+        row_df = pd.DataFrame([row])  
+        # append without header, without index
+        row_df.to_csv(csv_path, mode='a', header=False, index=False)
 
 
 def get_validation_metrics(loader, model, loss_func, device):

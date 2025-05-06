@@ -68,6 +68,7 @@ class GraphAttentionLayer(nn.Module):
         num_edge_features: int,
         num_attn_heads: int = 1,
         dropout: float = 0.2,
+        mlp_dropout: float = 0.2,
         use_leaky_relu: bool = True,
     ) -> None:
         super().__init__()
@@ -79,7 +80,8 @@ class GraphAttentionLayer(nn.Module):
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(num_edge_features, 2 * num_edge_features),
-            nn.GELU(),
+            nn.CELU(),
+            nn.Dropout(mlp_dropout)
             nn.Linear(2 * num_edge_features, num_edge_features),
         )
         self.layer_norm_2 = nn.LayerNorm(num_edge_features)
@@ -176,6 +178,7 @@ class GPSLayer(nn.Module):
         embed_dim: int,
         num_heads: int,
         dropout: float,
+        mlp_dropout: float,
         use_cross: bool,
     ) -> None:
         super().__init__()
@@ -197,15 +200,14 @@ class GPSLayer(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.CELU(),
-            nn.Dropout(dropout),
+            nn.Dropout(mlp_dropout),
             nn.Linear(embed_dim, embed_dim),
         )
 
     def forward(
         self,
         x_e_a: Tuple[Tensor, Tensor, Tensor],
-        context: Tensor | None = None,
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+        context: Tensor | None = None) -> Tuple[Tensor, Tensor, Tensor]:
         x, e, a = x_e_a
         residual = x
 
@@ -270,6 +272,7 @@ class GraphAttentionEncoder(nn.Module):
         num_layers: int,
         num_attn_heads: int,
         dropout: float,
+        mlp_dropout: float,
         pooling_dim: int,
         device: Union[str, torch.device],
         *,
@@ -289,6 +292,7 @@ class GraphAttentionEncoder(nn.Module):
                 num_edge_features,
                 heads,
                 dropout,
+                mlp_dropout,
                 use_leaky_relu=(i != num_layers - 1),
             )
             layers.append(
@@ -297,6 +301,7 @@ class GraphAttentionEncoder(nn.Module):
                     embed_dim=out_f,
                     num_heads=heads,
                     dropout=dropout,
+                    mlp_dropout=mlp_dropout,
                     use_cross=use_cross,
                 )
             )
@@ -527,186 +532,6 @@ class GlobalAttentionPooling(nn.Module):
 
         # [B, F_out] -> [B, 1]
         return self.final_projection(pooled_features)
-
-
-class GraphAttentionLayer(nn.Module):
-    """Single Graph attention layer for performing message passing on graph.
-
-    Instance Attributes:
-        - device (torch.device): The device to perform computations on.
-        - node_projection (nn.Module): Linear transformation applied to input node features.
-        - layer_norm_1 (nn.Module): Layer normalization applied to input node features.
-        - layer_norm_2 (nn.Module): Layer normalization applied to edge features.
-        - edge_mlp (nn.Module): MLP used for edge feature transformation.
-        - use_leaky_relu (bool): Whether to use LeakyReLU activation.
-        - leaky_relu (nn.Module): LeakyReLU activation function.
-        - num_attn_heads (int): Number of attention heads.
-        - head_size (int): Size of each attention head.
-        - attn_matrix (nn.Parameter): Attention weight matrix.
-        - attn_leaky_relu (nn.Module): LeakyReLU activation function for attention scores.
-        - out_node_projection (nn.Module): Linear transformation applied after attention computation.
-        - dropout (nn.Module): Dropout layer to prevent overfitting.
-        - residual_proj (nn.Module): Linear transformation for residual connection, or Identity if not needed.
-    """
-    device: str | torch.device
-    node_projection: nn.Module
-    layer_norm_1: nn.Module
-    layer_norm_2: nn.Module
-    edge_mlp: nn.Module
-    use_leaky_relu: bool
-    leaky_relu: nn.Module
-    num_attn_heads: int
-    head_size: int
-    attn_matrix: nn.Module
-    attn_leaky_relu: nn.Module
-    out_node_projection: nn.Module
-    dropout: nn.Module
-    residual_proj: nn.Module
-
-    def __init__(self, device: str | torch.device, in_features: int, out_features: int,
-                 num_edge_features: int, num_attn_heads: int = 1, dropout: float = 0.2,
-                 use_leaky_relu: bool = True) -> None:
-        """Initialize a single GAT layer"""
-        super().__init__()
-        self.device = device
-
-        self.node_projection = nn.Linear(in_features, out_features)
-        self.layer_norm_1 = nn.LayerNorm(in_features)
-
-        self.edge_mlp = nn.Sequential(
-            nn.Linear(num_edge_features, 2 * num_edge_features),
-            nn.GELU(),
-            nn.Linear(2 * num_edge_features, num_edge_features)
-        )
-        self.layer_norm_2 = nn.LayerNorm(num_edge_features)
-
-        self.use_leaky_relu = use_leaky_relu
-        if use_leaky_relu:
-            self.leaky_relu = nn.LeakyReLU(0.2)
-
-        self.num_attn_heads = num_attn_heads
-        self.head_size = out_features // num_attn_heads
-        self.attn_matrix = nn.Parameter(torch.empty((num_attn_heads, 2 * self.head_size + num_edge_features)))
-        self.attn_leaky_relu = nn.LeakyReLU(0.2)
-
-        # Post-attention LayerNorm
-        self.layer_norm_out = nn.LayerNorm(out_features)
-
-        # Final MLP layer
-        self.out_node_projection = nn.Linear(out_features, out_features)
-        self.dropout = nn.Dropout(dropout)
-
-        # Initialize necessary parameters using a Xavier uniform distribution.
-        nn.init.xavier_uniform_(self.node_projection.weight.data, gain=math.sqrt(2))
-        nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
-
-        # Add residual projection if in_features doesn't match out_features.
-        if in_features != out_features:
-            self.residual_proj = nn.Linear(in_features, out_features)
-        else:
-            self.residual_proj = nn.Identity()
-
-    def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) \
-            -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Compute the forward pass of the graph attention layer."""
-        # Initial node_features shape: [B, N, F_in]
-        node_features, edge_features, adjacency_matrix = [t.to(self.device) for t in x]
-        batch_size, num_nodes, _ = node_features.shape
-
-        # Save node and edge residual for later addition.
-        node_residual = node_features
-        edge_residual = edge_features
-
-        # [B, N, F_in] -> [B, N, F_out]
-        new_node_features = self.node_projection(self.layer_norm_1(node_features))
-
-        # [B, N, N, F_edge] -> [B, N, N, F_edge]
-        edge_normalized = self.layer_norm_2(edge_features)
-        edge_update = self.edge_mlp(edge_normalized)
-        new_edge_features = edge_update + edge_residual
-
-        # Split the node_features for every attention head.
-        # [B, N, F_out] -> [B, N, num_heads, F_out // num_heads]
-        new_node_features = new_node_features.view(batch_size, num_nodes, self.num_attn_heads, -1)
-
-        # attn_coeffs shape: [B, N, N, num_heads]
-        attn_coeffs = self._compute_attn_coeffs(new_node_features, new_edge_features, adjacency_matrix, num_nodes)
-
-        # [B, N, num_heads, F_out // num_attn_heads] -> [B, N, F_out]
-        new_node_features = self._execute_message_passing(new_node_features, attn_coeffs, batch_size, num_nodes)
-
-        # Do final projection and dropout
-        # The shape remains [B, N, F_out]
-        new_node_features = self.out_node_projection(new_node_features)
-        new_node_features = self.dropout(new_node_features)
-
-        # Apply residual connection.
-        # If dimensions differ, project the residual to the correct dimension.
-        node_residual = self.residual_proj(node_residual)
-        new_node_features = new_node_features + node_residual
-
-        # Optionally apply activation.
-        if self.use_leaky_relu:
-            new_node_features = self.leaky_relu(new_node_features)
-        
-        # Post norm
-        new_node_features = self.layer_norm_out(new_node_features)
-
-        return new_node_features, new_edge_features, adjacency_matrix
-
-    def _compute_attn_coeffs(self, node_features: torch.Tensor, edge_features: torch.Tensor,
-                             adjacency_matrix: torch.Tensor, num_nodes: int) -> torch.Tensor:
-        """Compute attention coefficients for message passing."""
-        # [B, N, num_heads, F_out // num_heads] -> [B, N, N, num_heads, F_out // num_heads]
-        row_node_features = node_features.unsqueeze(2).repeat(1, 1, num_nodes, 1, 1)
-
-        # [B, N, N, num_heads, F_out // num_heads] -> [B, N, N, num_heads, F_out // num_heads]
-        # Although dimensions are the same, however 2nd and 3rd dimension are transposed
-        col_node_features = row_node_features.transpose(1, 2)
-
-        # [B, N, N, F_edge] -> [B, N, N, num_heads, F_edge]
-        unsqueezed_edge_features = edge_features.unsqueeze(3).repeat(1, 1, 1, self.num_attn_heads, 1)
-
-        # [B, N, N, num_heads, 2 * (F_out // num_heads) + F_edge]
-        attn_input = torch.cat((row_node_features, col_node_features, unsqueezed_edge_features), dim=4)
-
-        # [B, N, N, num_heads, 2 * (F_out // num_heads) + F_edge] @ [2 * (F_out // num_heads) + F_edge, num_heads]
-        # --> [B, N, N, num_heads, num_heads]
-        attn_logits = attn_input @ self.attn_matrix.transpose(0, 1)
-
-        # [B, N, N, num_heads, num_heads] -> [B, N, N, num_heads]
-        attn_logits = attn_logits.sum(dim=-1)
-
-        # [B, N, N] -> [B, N, N, 1]
-        reshaped_adjacency_matrix = adjacency_matrix.unsqueeze(-1)
-
-        # Apply attention masking, similar to that of autoregression
-        # The shape is still [B, N, N, num_heads]
-        attn_logits = attn_logits.masked_fill(reshaped_adjacency_matrix == 0, float('-inf'))
-
-        # Use LeakyReLU then normalize all values using softmax
-        # The shape is still [B, N, N, num_heads]
-        attn_logits = self.attn_leaky_relu(attn_logits)
-        attn_coeffs = F.softmax(attn_logits, dim=2)
-
-        # Any nodes that don't have any connections (i.e. nodes created to pad the input data to the
-        # required size) will have all their attention logits equal to -inf. In this case, softmax will
-        # output NaN, so replace all NaN values with 0.
-        attn_coeffs = attn_coeffs.nan_to_num(0)
-
-        # Final shape: [B, N, N, num_heads]
-        return attn_coeffs
-
-    def _execute_message_passing(self, node_features: torch.Tensor, attn_coeffs: torch.Tensor,
-                                 batch_size: int, num_nodes: int) -> torch.Tensor:
-        """Perform message passing based on computed attention coefficients."""
-        # [B, N, num_heads, F_out // num_heads] EINSUM [B, N, N, num_heads]
-        # -> [B, N, num_heads, F_out // num_heads]
-        new_node_features = torch.einsum('bmax, bnma -> bnax', node_features, attn_coeffs)
-
-        # Concatenate output for different attention heads together.
-        # [B, N, num_heads, F_out // num_heads] -> [B, N, F_out]
-        return new_node_features.view(batch_size, num_nodes, -1)
 
 
 if __name__ == '__main__':

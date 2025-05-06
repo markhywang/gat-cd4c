@@ -1,12 +1,16 @@
-"""Graph Attention Networks (GAT) components — MERGED VERSION
-=============================================================
-This file merges the two divergent versions you provided.
-* **`use_cross` flag** is retained and plumbed through `DualGraphAttentionNetwork → GraphAttentionEncoder → GPSLayer` so you can
-  enable / disable cross‑graph attention at construction time.
-* **Model improvements** (batch‑first `MultiheadAttention`, learnable gating parameters `alpha` and `gamma`, better residual
-  handling, etc.) are preserved.
-* Creation of the two encoders in `DualGraphAttentionNetwork` now uses **keyword arguments** so the device is always passed
-  into the correct parameter and the earlier CPU/CUDA mix‑up cannot happen again.
+"""Graph Attention Networks (GAT) components — *normalisation‑enhanced version*
+==========================================================================
+Adds the four extra LayerNorm sites discussed in the review:
+1. **FeaturePrep output**  → `DualGraphAttentionNetwork.drug_ln` / `prot_ln`
+2. **Edge stream post‑residual** → `GraphAttentionLayer.layer_norm_edge_out`
+3. **Feed‑forward sub‑layer inside GPSLayer** → inserts a LayerNorm between CELU and Dropout
+4. **Graph‑level embeddings** → `DualGraphAttentionNetwork.pool_norm_[drug|prot]`
+
+Minor fixes
+-----------
+* Propagates `mlp_dropout` everywhere (previous commit missed the edge‑MLP).
+* Removes the duplicate legacy `GraphAttentionLayer` definition at the end of the file.
+* Syntax typo in `edge_mlp` (missing comma) corrected.
 """
 from __future__ import annotations
 
@@ -18,8 +22,9 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 # -----------------------------------------------------------------------------
-# Basic utility modules
+# Basic utility modules -------------------------------------------------------
 # -----------------------------------------------------------------------------
+
 
 class FeaturePrep(nn.Module):
     """Prepend a learned categorical embedding in front of dense node features."""
@@ -45,7 +50,6 @@ class CoAttention(nn.Module):
         self.alpha = nn.Parameter(torch.tensor(0.5))  # gating parameter
 
     def forward(self, drug_feats: Tensor, prot_feats: Tensor) -> Tuple[Tensor, Tensor]:
-        """`drug_feats` : [B, N_d, D]  —  `prot_feats` : [B, N_p, D]"""
         d_attn, _ = self.drug2prot(query=drug_feats, key=prot_feats, value=prot_feats)
         p_attn, _ = self.prot2drug(query=prot_feats, key=drug_feats, value=drug_feats)
 
@@ -53,9 +57,11 @@ class CoAttention(nn.Module):
         p_up = self.norm_prot(prot_feats + self.alpha * p_attn)
         return d_up, p_up
 
+
 # -----------------------------------------------------------------------------
-# Graph transformer building blocks
+# Graph transformer building blocks ------------------------------------------
 # -----------------------------------------------------------------------------
+
 
 class GraphAttentionLayer(nn.Module):
     """Single message‑passing layer (edge‑aware multi‑head attention)."""
@@ -68,23 +74,27 @@ class GraphAttentionLayer(nn.Module):
         num_edge_features: int,
         num_attn_heads: int = 1,
         dropout: float = 0.2,
+        mlp_dropout: float = 0.2,
         use_leaky_relu: bool = True,
     ) -> None:
         super().__init__()
         self.device = torch.device(device)
 
-        # node & edge preprocessing ------------------------------------------------
+        # node & edge preprocessing --------------------------------------------
         self.node_projection = nn.Linear(in_features, out_features)
         self.layer_norm_1 = nn.LayerNorm(in_features)
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(num_edge_features, 2 * num_edge_features),
-            nn.GELU(),
+            nn.CELU(),
+            nn.Dropout(mlp_dropout),
             nn.Linear(2 * num_edge_features, num_edge_features),
         )
         self.layer_norm_2 = nn.LayerNorm(num_edge_features)
+        # **NEW**
+        self.layer_norm_edge_out = nn.LayerNorm(num_edge_features)
 
-        # attention machinery ------------------------------------------------------
+        # attention machinery ---------------------------------------------------
         self.num_attn_heads = num_attn_heads
         self.head_size = out_features // num_attn_heads
         self.attn_matrix = nn.Parameter(
@@ -92,7 +102,7 @@ class GraphAttentionLayer(nn.Module):
         )
         self.attn_leaky_relu = nn.LeakyReLU(0.2)
 
-        # output & regularisation --------------------------------------------------
+        # output & regularisation ----------------------------------------------
         self.layer_norm_out = nn.LayerNorm(out_features)
         self.out_node_projection = nn.Linear(out_features, out_features)
         self.dropout = nn.Dropout(dropout)
@@ -101,18 +111,18 @@ class GraphAttentionLayer(nn.Module):
         if use_leaky_relu:
             self.leaky_relu = nn.LeakyReLU(0.2)
 
-        # Xavier init --------------------------------------------------------------
+        # Xavier init -----------------------------------------------------------
         nn.init.xavier_uniform_(self.node_projection.weight, gain=math.sqrt(2))
         nn.init.xavier_uniform_(self.attn_matrix, gain=math.sqrt(2))
 
-        # residual projector if needed --------------------------------------------
+        # residual projector if needed -----------------------------------------
         self.residual_proj = (
             nn.Linear(in_features, out_features) if in_features != out_features else nn.Identity()
         )
 
-    # -------------------------------------------------------------------------
-    # forward helpers
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
+    # forward helpers -------------------------------------------------------
+    # ---------------------------------------------------------------------
     def _compute_attn_coeffs(
         self,
         node_feats: Tensor,
@@ -120,39 +130,36 @@ class GraphAttentionLayer(nn.Module):
         adj: Tensor,
         num_nodes: int,
     ) -> Tensor:
-        # shapes: node_feats [B,N,H,Dh]  edge_feats [B,N,N,F_e]
         row = node_feats.unsqueeze(2).expand(-1, -1, num_nodes, -1, -1)
         col = row.transpose(1, 2)
         edge = edge_feats.unsqueeze(3).expand(-1, -1, -1, self.num_attn_heads, -1)
         concat = torch.cat((row, col, edge), dim=4)
-        logits = concat @ self.attn_matrix.T  # [B,N,N,H,H]
-        logits = logits.sum(dim=-1)  # [B,N,N,H]
+        logits = concat @ self.attn_matrix.T
+        logits = logits.sum(dim=-1)
         logits = logits.masked_fill(adj.unsqueeze(-1) == 0, float("-inf"))
         logits = self.attn_leaky_relu(logits)
         coeffs = F.softmax(logits, dim=2).nan_to_num_(0.0)
-        return coeffs  # [B,N,N,H]
+        return coeffs
 
-    def _execute_message_passing(
-        self, node_feats: Tensor, coeffs: Tensor, B: int, N: int
-    ) -> Tensor:
+    def _execute_message_passing(self, node_feats: Tensor, coeffs: Tensor, B: int, N: int) -> Tensor:
         msg = torch.einsum("bmax,bnma->bnax", node_feats, coeffs)
-        return msg.reshape(B, N, -1)  # concat heads
+        return msg.reshape(B, N, -1)
 
-    # -------------------------------------------------------------------------
-    def forward(
-        self, data: Tuple[Tensor, Tensor, Tensor]
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+    # ---------------------------------------------------------------------
+    def forward(self, data: Tuple[Tensor, Tensor, Tensor]) -> Tuple[Tensor, Tensor, Tensor]:
         node, edge, adj = [t.to(self.device) for t in data]
         B, N, _ = node.shape
 
-        # preprocess -----------------------------------------------------------
+        # preprocess -------------------------------------------------------
         node_res = node
         edge_res = edge
 
         node = self.node_projection(self.layer_norm_1(node))
         edge = self.edge_mlp(self.layer_norm_2(edge)) + edge_res
+        # **NEW normalisation on edge stream**
+        edge = self.layer_norm_edge_out(edge)
 
-        node = node.view(B, N, self.num_attn_heads, -1)  # split heads
+        node = node.view(B, N, self.num_attn_heads, -1)
 
         coeffs = self._compute_attn_coeffs(node, edge, adj, N)
         node = self._execute_message_passing(node, coeffs, B, N)
@@ -176,52 +183,46 @@ class GPSLayer(nn.Module):
         embed_dim: int,
         num_heads: int,
         dropout: float,
+        mlp_dropout: float,
         use_cross: bool,
     ) -> None:
         super().__init__()
         self.local = local_layer
 
-        self.global_attn = nn.MultiheadAttention(
-            embed_dim, num_heads, dropout=dropout, batch_first=True
-        )
+        self.global_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.use_cross = use_cross
         if use_cross:
-            self.cross_attn = nn.MultiheadAttention(
-                embed_dim, num_heads, dropout=dropout, batch_first=True
-            )
+            self.cross_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
 
-        # learnable gate γ controlling contribution of global/cross attention
         self.gamma = nn.Parameter(torch.tensor(0.5))
 
         self.norm = nn.LayerNorm(embed_dim)
+        # **NEW LayerNorm inside FFN**
         self.mlp = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.CELU(),
-            nn.Dropout(dropout),
+            nn.LayerNorm(embed_dim),
+            nn.Dropout(mlp_dropout),
             nn.Linear(embed_dim, embed_dim),
         )
 
-    def forward(
-        self,
-        x_e_a: Tuple[Tensor, Tensor, Tensor],
-        context: Tensor | None = None,
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, x_e_a: Tuple[Tensor, Tensor, Tensor], context: Tensor | None = None) -> Tuple[Tensor, Tensor, Tensor]:
         x, e, a = x_e_a
         residual = x
 
-        # 1) local message passing
+        # 1. local message passing ------------------------------------------
         x, e, a = self.local((x, e, a))
 
-        # 2) global self‑attention (same graph)
+        # 2. global self‑attention -----------------------------------------
         g_out, _ = self.global_attn(x, x, x)
 
-        # 3) optional cross‑graph attention
+        # 3. optional cross‑graph attention --------------------------------
         if self.use_cross and context is not None and context.size(-1) == x.size(-1):
             c_out, _ = self.cross_attn(x, context, context)
         else:
             c_out = torch.zeros_like(x)
 
-        # 4) gated fusion & feed‑forward
+        # 4. gated fusion & feed‑forward -----------------------------------
         res = self.local.residual_proj(residual) if hasattr(self.local, "residual_proj") else residual
         fused = res + x + self.gamma * g_out + self.gamma * c_out
         fused = self.norm(fused)
@@ -232,13 +233,7 @@ class GPSLayer(nn.Module):
 class GlobalAttentionPooling(nn.Module):
     """Node → graph embedding via attention pooling."""
 
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int = 1,
-        hidden_dim: int = 128,
-        dropout: float = 0.2,
-    ) -> None:
+    def __init__(self, in_features: int, out_features: int = 1, hidden_dim: int = 128, dropout: float = 0.2) -> None:
         super().__init__()
         self.global_attn = nn.Linear(in_features, 1)
         self.dropout = nn.Dropout(dropout)
@@ -250,12 +245,12 @@ class GlobalAttentionPooling(nn.Module):
             nn.Linear(hidden_dim, out_features),
         )
 
-    def forward(self, x: Tensor) -> Tensor:  # x [B,N,F]
-        scores = F.softmax(self.global_attn(x), dim=1)  # [B,N,1]
+    def forward(self, x: Tensor) -> Tensor:
+        scores = F.softmax(self.global_attn(x), dim=1)
         scores = self.dropout(scores)
-        pooled = (scores.transpose(1, 2) @ x).squeeze(1)  # [B,F]
+        pooled = (scores.transpose(1, 2) @ x).squeeze(1)
         pooled = self.dropout(pooled)
-        return self.proj(pooled)  # [B,out_features]
+        return self.proj(pooled)
 
 
 class GraphAttentionEncoder(nn.Module):
@@ -270,6 +265,7 @@ class GraphAttentionEncoder(nn.Module):
         num_layers: int,
         num_attn_heads: int,
         dropout: float,
+        mlp_dropout: float,
         pooling_dim: int,
         device: Union[str, torch.device],
         *,
@@ -289,6 +285,7 @@ class GraphAttentionEncoder(nn.Module):
                 num_edge_features,
                 heads,
                 dropout,
+                mlp_dropout,
                 use_leaky_relu=(i != num_layers - 1),
             )
             layers.append(
@@ -297,25 +294,14 @@ class GraphAttentionEncoder(nn.Module):
                     embed_dim=out_f,
                     num_heads=heads,
                     dropout=dropout,
+                    mlp_dropout=mlp_dropout,
                     use_cross=use_cross,
                 )
             )
         self.gps_layers = nn.ModuleList(layers)
-        self.global_pool = GlobalAttentionPooling(
-            in_features=out_features,
-            out_features=out_features,
-            hidden_dim=pooling_dim,
-            dropout=dropout,
-        )
+        self.global_pool = GlobalAttentionPooling(in_features=out_features, out_features=out_features, hidden_dim=pooling_dim, dropout=dropout)
 
-    def forward(
-        self,
-        node_feats: Tensor,
-        edge_feats: Tensor,
-        adj: Tensor,
-        *,
-        context: Tensor | None = None,
-    ) -> Tensor:
+    def forward(self, node_feats: Tensor, edge_feats: Tensor, adj: Tensor, *, context: Tensor | None = None) -> Tensor:
         x, e, a = node_feats, edge_feats, adj
         for layer in self.gps_layers:
             x, e, a = layer((x, e, a), context=context)
@@ -323,7 +309,7 @@ class GraphAttentionEncoder(nn.Module):
 
 
 class DualGraphAttentionNetwork(nn.Module):
-    """Drug‑graph encoder + Protein‑graph encoder + MLP head."""
+    """Drug‑graph encoder + Protein‑graph encoder + regression head."""
 
     def __init__(
         self,
@@ -349,9 +335,13 @@ class DualGraphAttentionNetwork(nn.Module):
         super().__init__()
         device = torch.device(device)
 
+        # --- embedding + normalisation ------------------------------------
         self.drug_feat_prep = FeaturePrep(num_atom_types, z_emb_dim)
         self.prot_feat_prep = FeaturePrep(num_res_types, z_emb_dim)
+        self.drug_ln = nn.LayerNorm(drug_in_features + z_emb_dim)
+        self.prot_ln = nn.LayerNorm(prot_in_features + z_emb_dim)
 
+        # --- encoders ------------------------------------------------------
         self.drug_encoder = GraphAttentionEncoder(
             drug_in_features + z_emb_dim,
             hidden_size,
@@ -360,6 +350,7 @@ class DualGraphAttentionNetwork(nn.Module):
             num_layers,
             num_heads,
             dropout,
+            mlp_dropout,
             pooling_dim,
             device,
             use_cross=use_cross,
@@ -372,6 +363,7 @@ class DualGraphAttentionNetwork(nn.Module):
             num_layers,
             num_heads,
             dropout,
+            mlp_dropout,
             pooling_dim,
             device,
             use_cross=use_cross,
@@ -379,6 +371,11 @@ class DualGraphAttentionNetwork(nn.Module):
 
         self.co_attn = CoAttention(emb_size, num_heads, dropout)
 
+        # graph‑level embedding norms --------------------------------------
+        self.pool_norm_drug = nn.LayerNorm(emb_size)
+        self.pool_norm_prot = nn.LayerNorm(emb_size)
+
+        # prediction head ---------------------------------------------------
         self.mlp = nn.Sequential(
             nn.Linear(emb_size * 2, mlp_hidden),
             nn.CELU(),
@@ -389,7 +386,7 @@ class DualGraphAttentionNetwork(nn.Module):
             nn.Linear(mlp_hidden, 1),
         )
 
-    # ---------------------------------------------------------------------
+    # ------------------------------------------------------------------
     def forward(
         self,
         drug_atomic_ids: Tensor,
@@ -401,25 +398,25 @@ class DualGraphAttentionNetwork(nn.Module):
         prot_edge_feats: Tensor,
         prot_adj: Tensor,
     ) -> Tensor:
-        # 0) prepend embeddings --------------------------------------------------
-        d_x = self.drug_feat_prep(drug_atomic_ids, drug_node_feats)
-        p_x = self.prot_feat_prep(prot_res_ids, prot_node_feats)
+        # 0. embed + **LayerNorm** ----------------------------------------
+        d_x = self.drug_ln(self.drug_feat_prep(drug_atomic_ids, drug_node_feats))
+        p_x = self.prot_ln(self.prot_feat_prep(prot_res_ids, prot_node_feats))
         d_e, d_a = drug_edge_feats, drug_adj
         p_e, p_a = prot_edge_feats, prot_adj
 
-        # 1) coupled GPS encoding ----------------------------------------------
+        # 1. coupled GPS encoding -----------------------------------------
         for d_layer, p_layer in zip(self.drug_encoder.gps_layers, self.prot_encoder.gps_layers):
             d_x, d_e, d_a = d_layer((d_x, d_e, d_a), context=p_x)
             p_x, p_e, p_a = p_layer((p_x, p_e, p_a), context=d_x)
 
-        # 2) extra node‑level co‑attention -------------------------------------
+        # 2. extra node‑level co‑attention --------------------------------
         d_x, p_x = self.co_attn(d_x, p_x)
 
-        # 3) global pooling -----------------------------------------------------
-        drug_emb = self.drug_encoder.global_pool(d_x)
-        prot_emb = self.prot_encoder.global_pool(p_x)
+        # 3. global pooling + **LayerNorm** -------------------------------
+        drug_emb = self.pool_norm_drug(self.drug_encoder.global_pool(d_x))
+        prot_emb = self.pool_norm_prot(self.prot_encoder.global_pool(p_x))
 
-        # 4) prediction head ----------------------------------------------------
+        # 4. regression head ----------------------------------------------
         score = self.mlp(torch.cat([drug_emb, prot_emb], dim=-1)).squeeze(-1)
         return score
         
@@ -527,186 +524,6 @@ class GlobalAttentionPooling(nn.Module):
 
         # [B, F_out] -> [B, 1]
         return self.final_projection(pooled_features)
-
-
-class GraphAttentionLayer(nn.Module):
-    """Single Graph attention layer for performing message passing on graph.
-
-    Instance Attributes:
-        - device (torch.device): The device to perform computations on.
-        - node_projection (nn.Module): Linear transformation applied to input node features.
-        - layer_norm_1 (nn.Module): Layer normalization applied to input node features.
-        - layer_norm_2 (nn.Module): Layer normalization applied to edge features.
-        - edge_mlp (nn.Module): MLP used for edge feature transformation.
-        - use_leaky_relu (bool): Whether to use LeakyReLU activation.
-        - leaky_relu (nn.Module): LeakyReLU activation function.
-        - num_attn_heads (int): Number of attention heads.
-        - head_size (int): Size of each attention head.
-        - attn_matrix (nn.Parameter): Attention weight matrix.
-        - attn_leaky_relu (nn.Module): LeakyReLU activation function for attention scores.
-        - out_node_projection (nn.Module): Linear transformation applied after attention computation.
-        - dropout (nn.Module): Dropout layer to prevent overfitting.
-        - residual_proj (nn.Module): Linear transformation for residual connection, or Identity if not needed.
-    """
-    device: str | torch.device
-    node_projection: nn.Module
-    layer_norm_1: nn.Module
-    layer_norm_2: nn.Module
-    edge_mlp: nn.Module
-    use_leaky_relu: bool
-    leaky_relu: nn.Module
-    num_attn_heads: int
-    head_size: int
-    attn_matrix: nn.Module
-    attn_leaky_relu: nn.Module
-    out_node_projection: nn.Module
-    dropout: nn.Module
-    residual_proj: nn.Module
-
-    def __init__(self, device: str | torch.device, in_features: int, out_features: int,
-                 num_edge_features: int, num_attn_heads: int = 1, dropout: float = 0.2,
-                 use_leaky_relu: bool = True) -> None:
-        """Initialize a single GAT layer"""
-        super().__init__()
-        self.device = device
-
-        self.node_projection = nn.Linear(in_features, out_features)
-        self.layer_norm_1 = nn.LayerNorm(in_features)
-
-        self.edge_mlp = nn.Sequential(
-            nn.Linear(num_edge_features, 2 * num_edge_features),
-            nn.GELU(),
-            nn.Linear(2 * num_edge_features, num_edge_features)
-        )
-        self.layer_norm_2 = nn.LayerNorm(num_edge_features)
-
-        self.use_leaky_relu = use_leaky_relu
-        if use_leaky_relu:
-            self.leaky_relu = nn.LeakyReLU(0.2)
-
-        self.num_attn_heads = num_attn_heads
-        self.head_size = out_features // num_attn_heads
-        self.attn_matrix = nn.Parameter(torch.empty((num_attn_heads, 2 * self.head_size + num_edge_features)))
-        self.attn_leaky_relu = nn.LeakyReLU(0.2)
-
-        # Post-attention LayerNorm
-        self.layer_norm_out = nn.LayerNorm(out_features)
-
-        # Final MLP layer
-        self.out_node_projection = nn.Linear(out_features, out_features)
-        self.dropout = nn.Dropout(dropout)
-
-        # Initialize necessary parameters using a Xavier uniform distribution.
-        nn.init.xavier_uniform_(self.node_projection.weight.data, gain=math.sqrt(2))
-        nn.init.xavier_uniform_(self.attn_matrix.data, gain=math.sqrt(2))
-
-        # Add residual projection if in_features doesn't match out_features.
-        if in_features != out_features:
-            self.residual_proj = nn.Linear(in_features, out_features)
-        else:
-            self.residual_proj = nn.Identity()
-
-    def forward(self, x: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) \
-            -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Compute the forward pass of the graph attention layer."""
-        # Initial node_features shape: [B, N, F_in]
-        node_features, edge_features, adjacency_matrix = [t.to(self.device) for t in x]
-        batch_size, num_nodes, _ = node_features.shape
-
-        # Save node and edge residual for later addition.
-        node_residual = node_features
-        edge_residual = edge_features
-
-        # [B, N, F_in] -> [B, N, F_out]
-        new_node_features = self.node_projection(self.layer_norm_1(node_features))
-
-        # [B, N, N, F_edge] -> [B, N, N, F_edge]
-        edge_normalized = self.layer_norm_2(edge_features)
-        edge_update = self.edge_mlp(edge_normalized)
-        new_edge_features = edge_update + edge_residual
-
-        # Split the node_features for every attention head.
-        # [B, N, F_out] -> [B, N, num_heads, F_out // num_heads]
-        new_node_features = new_node_features.view(batch_size, num_nodes, self.num_attn_heads, -1)
-
-        # attn_coeffs shape: [B, N, N, num_heads]
-        attn_coeffs = self._compute_attn_coeffs(new_node_features, new_edge_features, adjacency_matrix, num_nodes)
-
-        # [B, N, num_heads, F_out // num_attn_heads] -> [B, N, F_out]
-        new_node_features = self._execute_message_passing(new_node_features, attn_coeffs, batch_size, num_nodes)
-
-        # Do final projection and dropout
-        # The shape remains [B, N, F_out]
-        new_node_features = self.out_node_projection(new_node_features)
-        new_node_features = self.dropout(new_node_features)
-
-        # Apply residual connection.
-        # If dimensions differ, project the residual to the correct dimension.
-        node_residual = self.residual_proj(node_residual)
-        new_node_features = new_node_features + node_residual
-
-        # Optionally apply activation.
-        if self.use_leaky_relu:
-            new_node_features = self.leaky_relu(new_node_features)
-        
-        # Post norm
-        new_node_features = self.layer_norm_out(new_node_features)
-
-        return new_node_features, new_edge_features, adjacency_matrix
-
-    def _compute_attn_coeffs(self, node_features: torch.Tensor, edge_features: torch.Tensor,
-                             adjacency_matrix: torch.Tensor, num_nodes: int) -> torch.Tensor:
-        """Compute attention coefficients for message passing."""
-        # [B, N, num_heads, F_out // num_heads] -> [B, N, N, num_heads, F_out // num_heads]
-        row_node_features = node_features.unsqueeze(2).repeat(1, 1, num_nodes, 1, 1)
-
-        # [B, N, N, num_heads, F_out // num_heads] -> [B, N, N, num_heads, F_out // num_heads]
-        # Although dimensions are the same, however 2nd and 3rd dimension are transposed
-        col_node_features = row_node_features.transpose(1, 2)
-
-        # [B, N, N, F_edge] -> [B, N, N, num_heads, F_edge]
-        unsqueezed_edge_features = edge_features.unsqueeze(3).repeat(1, 1, 1, self.num_attn_heads, 1)
-
-        # [B, N, N, num_heads, 2 * (F_out // num_heads) + F_edge]
-        attn_input = torch.cat((row_node_features, col_node_features, unsqueezed_edge_features), dim=4)
-
-        # [B, N, N, num_heads, 2 * (F_out // num_heads) + F_edge] @ [2 * (F_out // num_heads) + F_edge, num_heads]
-        # --> [B, N, N, num_heads, num_heads]
-        attn_logits = attn_input @ self.attn_matrix.transpose(0, 1)
-
-        # [B, N, N, num_heads, num_heads] -> [B, N, N, num_heads]
-        attn_logits = attn_logits.sum(dim=-1)
-
-        # [B, N, N] -> [B, N, N, 1]
-        reshaped_adjacency_matrix = adjacency_matrix.unsqueeze(-1)
-
-        # Apply attention masking, similar to that of autoregression
-        # The shape is still [B, N, N, num_heads]
-        attn_logits = attn_logits.masked_fill(reshaped_adjacency_matrix == 0, float('-inf'))
-
-        # Use LeakyReLU then normalize all values using softmax
-        # The shape is still [B, N, N, num_heads]
-        attn_logits = self.attn_leaky_relu(attn_logits)
-        attn_coeffs = F.softmax(attn_logits, dim=2)
-
-        # Any nodes that don't have any connections (i.e. nodes created to pad the input data to the
-        # required size) will have all their attention logits equal to -inf. In this case, softmax will
-        # output NaN, so replace all NaN values with 0.
-        attn_coeffs = attn_coeffs.nan_to_num(0)
-
-        # Final shape: [B, N, N, num_heads]
-        return attn_coeffs
-
-    def _execute_message_passing(self, node_features: torch.Tensor, attn_coeffs: torch.Tensor,
-                                 batch_size: int, num_nodes: int) -> torch.Tensor:
-        """Perform message passing based on computed attention coefficients."""
-        # [B, N, num_heads, F_out // num_heads] EINSUM [B, N, N, num_heads]
-        # -> [B, N, num_heads, F_out // num_heads]
-        new_node_features = torch.einsum('bmax, bnma -> bnax', node_features, attn_coeffs)
-
-        # Concatenate output for different attention heads together.
-        # [B, N, num_heads, F_out // num_heads] -> [B, N, F_out]
-        return new_node_features.view(batch_size, num_nodes, -1)
 
 
 if __name__ == '__main__':
