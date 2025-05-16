@@ -18,3 +18,5 @@ xgboost
 hypothesis
 pytest
 python-ta~=2.9.1
+biopython
+pytdc

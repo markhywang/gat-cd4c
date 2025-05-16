@@ -4,7 +4,6 @@ More specifically, it has the main DrugProtein dataset, which contains specific 
 Note that DrugMolecules now include optional 3D atomic coordinates as node features.
 """
 
-import rdkit.Chem
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from typing import Any
@@ -19,6 +18,10 @@ from .functional_groups import *
 from utils.embed_proteins import ProteinGraphBuilder
 
 ATOM_PAD_ID = 0          # 0 = “dummy / padded node”
+
+from sklearn.model_selection import train_test_split
+from tdc.multi_pred import DTI
+
 
 # ----------------------------------------------------------------------------
 # Collation helper
