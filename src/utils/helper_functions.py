@@ -360,7 +360,7 @@ def set_seeds(seed: int = 42) -> None:
     torch.cuda.manual_seed(seed)
 
 
-def count_model_params(model: nn.Module, only_trainable: bool = False) -> int:
+def count_params(model: nn.Module, only_trainable: bool = False) -> int:
     """
     Counts the total number of parameters in a model.
 
@@ -384,6 +384,9 @@ def count_model_params(model: nn.Module, only_trainable: bool = False) -> int:
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
     else:
         return sum(p.numel() for p in model.parameters())
+
+# Alias for backward compatibility
+count_model_params = count_params
 
 
 def plot_preds_vs_labels(preds: torch.Tensor, labels: torch.Tensor) -> None:
@@ -443,6 +446,25 @@ def get_r_squared(preds: np.ndarray, labels: np.ndarray) -> float:
     ss_res = np.sum((preds - labels) ** 2)  # Residual sum of squares
     ss_tot = np.sum((labels - np.mean(labels)) ** 2)  # Total sum of squares
     return 1 - (ss_res / ss_tot)
+
+
+def try_run(func, *args, **kwargs):
+    """
+    Try to run a function with the given arguments, returning None if it fails.
+
+    Args:
+        func: The function to run
+        *args: Arguments to pass to the function
+        **kwargs: Keyword arguments to pass to the function
+
+    Returns:
+        The result of the function or None if it failed
+    """
+    try:
+        return func(*args, **kwargs)
+    except Exception as e:
+        print(f"Function {func.__name__} failed: {e}")
+        return None
 
 
 if __name__ == "__main__":

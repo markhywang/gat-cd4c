@@ -14,10 +14,15 @@ import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 
-from .functional_groups import *
-from utils.embed_proteins import ProteinGraphBuilder
+try:
+    from .functional_groups import *
+    from .embed_proteins import ProteinGraphBuilder
+except ImportError:
+    # For when the module is imported from outside
+    from src.utils.functional_groups import *
+    from src.utils.embed_proteins import ProteinGraphBuilder
 
-ATOM_PAD_ID = 0          # 0 = “dummy / padded node”
+ATOM_PAD_ID = 0          # 0 = "dummy / padded node"
 
 from sklearn.model_selection import train_test_split
 from tdc.multi_pred import DTI
@@ -246,9 +251,9 @@ class DrugProteinDataset(Dataset):
         self.max_nodes = max_nodes
         self.use_half = use_half
         self.include_3d = include_3d
-        self.pchembl = df['pChEMBL_Value'].tolist()
-        self.smiles = df['smiles'].tolist()
-        self.prot_ids = df['Target_ID'].tolist()
+        self.pchembl = df['pChEMBL_Value'].values.tolist()
+        self.smiles = df['smiles'].values.tolist()
+        self.prot_ids = df['Target_ID'].values.tolist()
         self.prot_emb_df = prot_emb
         self.graph_dir = graph_dir
         self.builder = ProteinGraphBuilder(self.graph_dir)
@@ -276,7 +281,7 @@ class DrugProteinDataset(Dataset):
     
         lbl  = torch.tensor(self.pchembl[i], dtype=torch.float32)
     
-        # NOTE: we *do not* build dense adjacency here; that’s done in the collate_fn
+        # NOTE: we *do not* build dense adjacency here; that's done in the collate_fn
         return d_x, d_z, d_e, d_a, p_x, p_e, p_i, lbl
 
 
