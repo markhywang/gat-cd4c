@@ -42,7 +42,7 @@ if conda env list | grep -q "^$ENV_NAME "; then
 fi
 
 echo "Creating new conda environment '$ENV_NAME'..."
-conda create -y -n $ENV_NAME python=3.9
+conda create -y -n $ENV_NAME python=3.12.2
 
 echo "Activating conda environment..."
 eval "$(conda shell.bash hook)"
@@ -54,7 +54,7 @@ echo "Installing CUDA-compatible JAX..."
 pip install --upgrade "jax[cuda12]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 echo "Installing ColabFold..."
-conda install -y -c conda-forge -c bioconda colabfold
+conda install -y -c conda-forge -c bioconda colabfold=1.5.5
 
 # Install additional dependencies
 echo "Installing additional dependencies..."
