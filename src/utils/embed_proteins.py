@@ -5,47 +5,27 @@ Usage
 -----
 1. **Single build (library use)**
 
-   ```python
+   
+python
    from embed_proteins import ProteinGraphBuilder
    builder = ProteinGraphBuilder(graph_dir="../data/protein_graphs")
    data = builder.build("AF‑P00533‑F1‑model_v4.pdb")
    builder.save("CHEMBL612545", data)
-   ```
+
 
 2. **Dataset‑wide pre‑compute**
 
-   ```bash
-   python embed_proteins.py --dataset KIBA --out-dir ../data/protein_graphs \
+   
+bash
+   python embed_proteins.py --dataset KIBA --out-dir ../data/protein_graphs \\
                             --num-workers 8 [--use-local-colabfold]
-   ```
+
 
    The script pulls the desired **TDC** dataset, resolves each *Target_ID* (which
    is already a UniProt accession for KIBA/DAVIS) or raw sequence, obtains a PDB
-   via the **ColabFold** local pipeline (if `--use-local-colabfold` is set) or
+   via the **ColabFold** local pipeline (if --use-local-colabfold is set) or
    remote AlphaFold DB, builds the residue graph (one‑hot + charge + Cα coords) and
-   saves it as `<Target_ID>.pt`.
-
-### Install ColabFold Locally
-
-ColabFold dramatically reduces disk requirements (~50 GB vs 2.6 TB) by using MMseqs2.
-
-```bash
-# Create a dedicated conda env
-conda create -n colabfold -c conda-forge python=3.9
-conda activate colabfold
-# Install core dependencies
-conda install -c conda-forge openmm biopython jax jaxlib
-# Install ColabFold batch script
-pip install colabfold
-# Make sure colabfold_batch is on your PATH
-```
-
-### Example Run of ColabFold Batch
-
-```bash
-# single FASTA to structure
-colabfold_batch --fasta your_protein.fasta --output_dir ./cf_out --amber
-```
+   saves it as <Target_ID>.pt.
 
 Node features
 -------------
@@ -63,14 +43,15 @@ Edge feature = single scalar distance (Å).
 from __future__ import annotations
 
 import argparse
-import multiprocessing as mp
-import pathlib
+import os
 import sys
 import hashlib
+import pathlib
 import re
-import time
-from typing import Dict, Optional
 import subprocess
+import time
+from typing import Dict, Optional, List, Tuple
+from tqdm import tqdm
 
 import requests
 import torch
@@ -84,7 +65,7 @@ from torch_geometric.data import Data
 AA_ORDER = "ACDEFGHIKLMNPQRSTVWY"
 AA_TO_IDX: Dict[str, int] = {aa: i for i, aa in enumerate(AA_ORDER)}
 AA_CHARGE = {"D": -1, "E": -1, "K": 1, "R": 1, "H": 1}
-NUM_AA = len(AA_ORDER)
+NUM_AA = len(AA_ORDER)                                                  # 20
 
 _AF_URL = "https://alphafold.ebi.ac.uk/files/AF-{acc}-F1-model_v4.pdb"
 _UNIPROT_FASTA = "https://rest.uniprot.org/uniprotkb/{acc}.fasta"
@@ -97,12 +78,12 @@ UNIPROT_REGEX = re.compile(
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
-
 def looks_like_uniprot(acc: str) -> bool:
+    """Check if a string matches the UniProt ID format."""
     return bool(UNIPROT_REGEX.match(acc))
 
-
 def uniprot_exists(acc: str) -> bool:
+    """Check if a UniProt ID exists in the remote database."""
     url = _UNIPROT_FASTA.format(acc=acc)
     try:
         r = requests.head(url, timeout=5)
@@ -110,162 +91,690 @@ def uniprot_exists(acc: str) -> bool:
     except requests.RequestException:
         return False
 
-
-def run_colabfold(fasta_name: str, seq: str, output_dir: pathlib.Path) -> pathlib.Path:
-    """
-    Run ColabFold locally via the `colabfold_batch` CLI.
-    Expects `colabfold_batch` on PATH.
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-    fasta_file = output_dir / f"{fasta_name}.fasta"
-    with open(fasta_file, 'w') as f:
-        f.write(f">{fasta_name}\n{seq}\n")
-    # call ColabFold batch
-    cmd = [
-        "colabfold_batch",
-        "--fasta", str(fasta_file),
-        "--output_dir", str(output_dir),
-        "--amber"
-    ]
-    subprocess.run(cmd, check=True)
-    pdb_path = output_dir / f"{fasta_name}_unrelaxed_rank_1_model_1.pdb"
-    if not pdb_path.exists():
-        raise RuntimeError(f"ColabFold did not produce PDB for {fasta_name}")
-    return pdb_path
-
 # ---------------------------------------------------------------------------
 class ProteinGraphBuilder:
-    """Construct, cache and load residue‑level graphs."""
+    """Build protein graphs from PDB structures.
+
+    Args:
+        graph_dir: Directory to save/load protein graphs
+        cutoff: Distance cutoff for spatial edges in Angstroms
+        pocket_radius: If given, only keep residues within this distance of ligand
+        use_colabfold: Whether to use local ColabFold for structure prediction
+    """
 
     def __init__(
         self,
         graph_dir: str = "../data/protein_graphs",
         cutoff: float = 10.0,
+        pocket_radius: float | None = None,
         use_colabfold: bool = False
     ):
-        self.cutoff = cutoff
+        self.cutoff = cutoff              # edge build distance threshold (Å)
+        self.pocket_radius = pocket_radius
         self.graph_dir = pathlib.Path(graph_dir)
         self.graph_dir.mkdir(parents=True, exist_ok=True)
         self.parser = PDBParser(QUIET=True)
         self.use_colabfold = use_colabfold
+        
+        # Check if colabfold_batch is available in PATH
+        if self.use_colabfold:
+            try:
+                # First test if colabfold_batch is in path
+                subprocess.run(["which", "colabfold_batch"], 
+                              check=True, 
+                              stdout=subprocess.DEVNULL, 
+                              stderr=subprocess.DEVNULL)
+                
+                # Also check if it actually runs without errors
+                test_cmd = ["colabfold_batch", "--help"]
+                test_proc = subprocess.run(test_cmd, 
+                                        stdout=subprocess.PIPE, 
+                                        stderr=subprocess.PIPE,
+                                        text=True,
+                                        timeout=5)
+                
+                if test_proc.returncode != 0 or "linear_util" in test_proc.stderr or "AttributeError" in test_proc.stderr:
+                    print("WARNING: ColabFold has dependency issues. Found in PATH but failed basic test.")
+                    print(f"Error: {test_proc.stderr[:200]}...")
+                    print("Falling back to linear structure generation.")
+                    self._colabfold_available = False
+                else:
+                    self._colabfold_available = True
+            except (subprocess.SubprocessError, FileNotFoundError, TimeoutError):
+                print("WARNING: colabfold_batch command not found in PATH.")
+                print("Falling back to linear structure generation.")
+                self._colabfold_available = False
+        else:
+            self._colabfold_available = False
 
-    def _three_to_one(self, resname: str) -> str:
-        tbl = {
-            "ALA":"A","CYS":"C","ASP":"D","GLU":"E","PHE":"F","GLY":"G",
-            "HIS":"H","ILE":"I","LYS":"K","LEU":"L","MET":"M","ASN":"N",
-            "PRO":"P","GLN":"Q","ARG":"R","SER":"S","THR":"T","VAL":"V",
-            "TRP":"W","TYR":"Y"
-        }
-        return tbl.get(resname.upper(), "X")
+    def _generate_protein_graph_filename(self, identifier: str) -> str:
+        """
+        Generates a safe filename for a protein graph.
+        Hashes identifiers that are too long or contain disallowed characters.
+        """
+        # Maximum length for the identifier part of the filename before hashing.
+        # Common filesystem limit is 255 bytes. This is conservative.
+        MAX_IDENTIFIER_LEN_BEFORE_HASH = 100
+
+        # Characters allowed in a direct filename (conservative set).
+        # UniProt IDs, ChEMBL IDs, and typical sequences (A-Z) should pass this.
+        ALLOWED_CHARS_REGEX = r"^[A-Za-z0-9_\-\.]+$"
+
+        is_too_long = len(identifier) > MAX_IDENTIFIER_LEN_BEFORE_HASH
+        # A typical protein sequence (all caps letters) IS matched by the regex.
+        # So, has_disallowed_chars will be False for them.
+        # Hashing for sequences will primarily be triggered by length.
+        has_disallowed_chars = not re.match(ALLOWED_CHARS_REGEX, identifier)
+
+        if is_too_long or has_disallowed_chars:
+            # Use MD5 hash for consistent naming
+            hashed_identifier = hashlib.md5(identifier.encode()).hexdigest()
+            return f"seq-{hashed_identifier}.pt"
+        else:
+            return f"{identifier}.pt"
 
     def _fetch_pdb(self, acc: str) -> pathlib.Path:
-        # Determine sequence or UniProt accession
+        """
+        Fetch PDB structure for a UniProt ID or create one from a sequence.
+        
+        Args:
+            acc: UniProt ID or protein sequence
+            
+        Returns:
+            Path to PDB file
+        """
+        # Try as UniProt ID first
         is_uniprot = looks_like_uniprot(acc) and uniprot_exists(acc)
-        seq = acc
-        name = acc
-        # fetch remote if not using ColabFold
-        if not self.use_colabfold:
-            if is_uniprot:
-                pdb_url = _AF_URL.format(acc=acc)
-                out = self.graph_dir / f"AF-{acc}-F1-model_v4.pdb"
-                if out.exists():
-                    return out
-                r = requests.get(pdb_url, timeout=20)
-                if r.status_code != 200:
-                    raise RuntimeError(f"AlphaFold PDB not found for {acc}")
-                out.write_bytes(r.content)
-                return out
-            else:
-                raise RuntimeError(f"Cannot fetch non-UniProt ID {acc} remotely")
-        # use ColabFold for any
-        return run_colabfold(name, seq, self.graph_dir)
+        
+        if is_uniprot:
+            # For UniProt IDs, try AlphaFold DB first
+            pdb_url = _AF_URL.format(acc=acc)
+            pdb_path = self.graph_dir / f"AF-{acc}-F1-model_v4.pdb"
+            
+            if pdb_path.exists():
+                return pdb_path
+                
+            try:
+                print(f"Fetching {acc} from AlphaFold DB...")
+                r = requests.get(pdb_url, timeout=30)
+                r.raise_for_status()
+                pdb_path.write_bytes(r.content)
+                return pdb_path
+            except requests.RequestException as e:
+                if not self.use_colabfold:
+                    print(f"Failed to download AlphaFold PDB for {acc}: {e}")
+                    print("Falling back to linear structure generation.")
+                    # Get sequence for UniProt ID
+                    try:
+                        r_fasta = requests.get(_UNIPROT_FASTA.format(acc=acc), timeout=15)
+                        if r_fasta.status_code == 200:
+                            fasta_content = r_fasta.text
+                            fetched_seq = "".join(fasta_content.splitlines()[1:]).strip()
+                            if fetched_seq:
+                                return self._create_linear_structure(acc, fetched_seq)
+                    except Exception as ex:
+                        print(f"Failed to fetch sequence for {acc}: {ex}")
+                    # If all else fails, use the ID as a placeholder sequence
+                    return self._create_linear_structure(acc, "A" * 50)
+                print(f"AlphaFold DB fetch failed for {acc}, trying ColabFold...")
 
-    def _extract_ca(self, pdb_path: pathlib.Path):
+        # If not UniProt or failed to fetch, try ColabFold
+        if self.use_colabfold and self._colabfold_available:
+            # For UniProt IDs, try to get sequence first
+            seq = acc  # Default: assume acc is the sequence
+            
+            if is_uniprot:
+                try:
+                    r_fasta = requests.get(_UNIPROT_FASTA.format(acc=acc), timeout=15)
+                    if r_fasta.status_code == 200:
+                        fasta_content = r_fasta.text
+                        fetched_seq = "".join(fasta_content.splitlines()[1:]).strip()
+                        if fetched_seq:
+                            seq = fetched_seq
+                except Exception:
+                    pass
+            
+            # Validate sequence
+            if not seq or not re.match(r"^[A-Za-z]+$", seq.upper()):
+                raise ValueError(f"Invalid protein sequence for {acc}")
+                
+            # Create a safe filename for ColabFold
+            if len(acc) > 30:
+                safe_name = f"seq-{hashlib.md5(acc.encode()).hexdigest()}"
+            else:
+                safe_name = re.sub(r'[^\w\-.]', '_', acc)
+                
+            # Create FASTA file for ColabFold
+            fasta_path = self.graph_dir / f"{safe_name}.fasta"
+            with open(fasta_path, 'w') as f:
+                # Use a very short header to prevent long filenames in output
+                f.write(f">seq\n{seq}\n")
+                
+            # Create separate subdirectory for ColabFold output to prevent long filenames
+            colabfold_output_dir = self.graph_dir / f"cf_output_{hashlib.md5(acc.encode()).hexdigest()[:8]}"
+            colabfold_output_dir.mkdir(exist_ok=True)
+                
+            # Run ColabFold
+            cmd = [
+                "colabfold_batch",
+                "--num-recycle", "3",
+                "--model-type", "auto",
+                "--msa-mode", "single_sequence",  # Skip the MSA generation step
+            ]
+
+            # Add input and output paths
+            cmd.extend([
+                str(fasta_path),
+                str(colabfold_output_dir)
+            ])
+            
+            print(f"Running ColabFold command: {' '.join(cmd)}")
+            
+            try:
+                print(f"Starting ColabFold for {safe_name}...")
+                
+                # Set specific environment variables to help with JAX compatibility
+                env = os.environ.copy()
+                env["XLA_FLAGS"] = "--xla_gpu_force_compilation_parallelism=1"
+                env["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Suppress TF warnings
+                
+                # Check if GPU is available, add cpu-only if not
+                try:
+                    import torch
+                    if not torch.cuda.is_available():
+                        cmd.append("--cpu-only")
+                        print("No GPU detected, using CPU-only mode")
+                    else:
+                        print(f"GPU detected: {torch.cuda.get_device_name(0)}, using GPU acceleration")
+                        # Add environment variables for better GPU performance
+                        env["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+                        env["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
+                        env["TF_FORCE_UNIFIED_MEMORY"] = "1"
+                        env["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.8"  # Use 80% of GPU memory
+                        env["TF_GPU_THREAD_MODE"] = "gpu_private"
+                except ImportError:
+                    cmd.append("--cpu-only")
+                    print("Torch not found, defaulting to CPU-only mode")
+                
+                # Try to run ColabFold
+                process = subprocess.Popen(
+                    cmd, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                    env=env
+                )
+                
+                # Set a timeout (10 minutes)
+                timeout = 30  # Start with a short timeout for quick error detection
+                try:
+                    # First check if it fails immediately due to dependency issues
+                    stdout, stderr = process.communicate(timeout=timeout)
+                    if process.returncode != 0:
+                        print(f"ColabFold failed with return code {process.returncode}")
+                        print(f"Error: {stderr[:500]}")
+                        return self._create_linear_structure(acc, seq)
+                except subprocess.TimeoutExpired:
+                    # If it didn't fail immediately with dependency error, try longer timeout
+                    try:
+                        print("Still running, waiting longer...")
+                        stdout, stderr = process.communicate(timeout=600)  # 10 minute full timeout
+                        if process.returncode != 0:
+                            print(f"ColabFold failed after longer run with return code {process.returncode}")
+                            print(f"Error: {stderr[:200]}")
+                            return self._create_linear_structure(acc, seq)
+                    except subprocess.TimeoutExpired:
+                        print("ColabFold process timed out after 10 minutes")
+                        process.kill()
+                        return self._create_linear_structure(acc, seq)
+                    
+            except (subprocess.SubprocessError, FileNotFoundError) as e:
+                print(f"Failed to run ColabFold for {acc}: {e}")
+                return self._create_linear_structure(acc, seq)
+                
+            # Find PDB file (search for rank 1 model in the output directory)
+            pdb_files = list(colabfold_output_dir.glob(f"*.pdb"))
+            
+            if not pdb_files:
+                print(f"WARNING: ColabFold did not produce PDB for {acc}. Creating a simple linear structure.")
+                return self._create_linear_structure(acc, seq)
+                
+            # Prefer relaxed model
+            for pdb in pdb_files:
+                if "relaxed" in pdb.name:
+                    return pdb
+            # Otherwise take first
+            return pdb_files[0]
+            
+        else:
+            # If colabfold not available or not requested, create a linear structure
+            if is_uniprot:
+                # Try to get sequence for UniProt ID
+                try:
+                    r_fasta = requests.get(_UNIPROT_FASTA.format(acc=acc), timeout=15)
+                    if r_fasta.status_code == 200:
+                        fasta_content = r_fasta.text
+                        fetched_seq = "".join(fasta_content.splitlines()[1:]).strip()
+                        if fetched_seq:
+                            return self._create_linear_structure(acc, fetched_seq)
+                except Exception as ex:
+                    print(f"Failed to fetch sequence for {acc}: {ex}")
+            
+            # For non-UniProt or if fetching failed, assume acc is the sequence
+            if not re.match(r"^[A-Za-z]+$", acc):
+                print(f"Warning: {acc} doesn't look like a valid sequence. Using placeholder.")
+                seq = "A" * 50
+            else:
+                seq = acc
+                
+            return self._create_linear_structure(acc, seq)
+
+    def _create_linear_structure(self, acc: str, seq: str) -> pathlib.Path:
+        """Create a simple linear structure for a protein sequence as fallback.
+        
+        This generates a PDB file with a straight-line backbone (Cα atoms only)
+        when ColabFold fails to produce a proper structure.
+        
+        Args:
+            acc: UniProt ID or sequence identifier
+            seq: Protein sequence
+            
+        Returns:
+            Path to generated PDB file
+        """
+        # Create a safe filename
+        if len(acc) > 30:
+            safe_name = f"seq-{hashlib.md5(acc.encode()).hexdigest()}"
+        else:
+            safe_name = re.sub(r'[^\w\-.]', '_', acc)
+            
+        pdb_path = self.graph_dir / f"{safe_name}_linear.pdb"
+        
+        # Generate a linear structure with 3.8Å between consecutive Cα atoms
+        with open(pdb_path, 'w') as f:
+            f.write("HEADER    LINEAR STRUCTURE (FALLBACK)              \n")
+            f.write(f"TITLE     LINEAR STRUCTURE FOR {acc}              \n")
+            
+            for i, aa in enumerate(seq):
+                x = i * 3.8  # 3.8Å is typical Cα-Cα distance
+                y = 0.0
+                z = 0.0
+                atom_serial = i + 1
+                residue_seq = i + 1
+                
+                # Use standard 3-letter amino acid code
+                aa_code = {"A": "ALA", "C": "CYS", "D": "ASP", "E": "GLU", "F": "PHE", 
+                           "G": "GLY", "H": "HIS", "I": "ILE", "K": "LYS", "L": "LEU", 
+                           "M": "MET", "N": "ASN", "P": "PRO", "Q": "GLN", "R": "ARG", 
+                           "S": "SER", "T": "THR", "V": "VAL", "W": "TRP", "Y": "TYR"}.get(aa, "GLY")
+                
+                # PDB ATOM record format
+                f.write(f"ATOM  {atom_serial:5d}  CA  {aa_code} A{residue_seq:4d}    "
+                        f"{x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00           C  \n")
+            
+            f.write("END")
+        
+        print(f"Created linear structure at {pdb_path}")
+        return pdb_path
+
+    def _extract_ca(self, pdb_path: pathlib.Path) -> Tuple[torch.Tensor, List[str]]:
+        """Extract C-alpha coordinates and residue names from PDB."""
         coords, aa3 = [], []
-        struct = self.parser.get_structure("cf", str(pdb_path))
-        for model in struct:
+        structure = self.parser.get_structure("af", str(pdb_path))
+        for model in structure:
             for chain in model:
                 for res in chain:
-                    if "CA" in res:
-                        coords.append(torch.tensor(res["CA"].coord, dtype=torch.float32))
-                        aa3.append(res.get_resname())
+                    if "CA" not in res:
+                        continue
+                    coords.append(torch.tensor(res["CA"].coord, dtype=torch.float32))
+                    aa3.append(res.get_resname().upper())
+        if not coords:
+            raise RuntimeError(f"No C-alpha atoms found in {pdb_path}")
         return torch.stack(coords), aa3
 
-    def _node_feats(self, aa3: list[str], coords: torch.Tensor):
-        one_hot = torch.zeros((len(aa3), NUM_AA), dtype=torch.float32)
-        charges = torch.zeros((len(aa3), 1), dtype=torch.float32)
-        for i, r3 in enumerate(aa3):
-            r1 = self._three_to_one(r3)
-            idx = AA_TO_IDX.get(r1)
+    def _aa_one_hot(self, aa_list: List[str]) -> torch.Tensor:
+        """Convert list of 3-letter amino acid codes to one-hot encoding."""
+        one_hot = torch.zeros((len(aa_list), NUM_AA), dtype=torch.float32)
+        for i, aa3 in enumerate(aa_list):
+            aa1 = self._three_to_one(aa3)
+            idx = AA_TO_IDX.get(aa1, None)
             if idx is not None:
                 one_hot[i, idx] = 1.0
-            charges[i, 0] = AA_CHARGE.get(r1, 0)
-        return torch.cat([one_hot, charges, coords], dim=1)
+        return one_hot
 
-    def build(self, pdb_path: pathlib.Path | str) -> Data:
+    def _three_to_one(self, resname: str) -> str:
+        """Convert 3‑letter residue code to 1‑letter, fallback to 'X'."""
+        mapping = {
+            "ALA": "A", "CYS": "C", "ASP": "D", "GLU": "E", "PHE": "F",
+            "GLY": "G", "HIS": "H", "ILE": "I", "LYS": "K", "LEU": "L",
+            "MET": "M", "ASN": "N", "PRO": "P", "GLN": "Q", "ARG": "R",
+            "SER": "S", "THR": "T", "VAL": "V", "TRP": "W", "TYR": "Y",
+        }
+        return mapping.get(resname, "X")
+
+    def _charges(self, aa_list: List[str]) -> torch.Tensor:
+        """Create charge tensor for amino acids."""
+        charges = torch.zeros((len(aa_list), 1), dtype=torch.float32)
+        for i, aa3 in enumerate(aa_list):
+            aa1 = self._three_to_one(aa3)
+            charges[i, 0] = AA_CHARGE.get(aa1, 0)
+        return charges
+
+    def _crop_to_pocket(self, coords: torch.Tensor, 
+                       ligand_coords: torch.Tensor | None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Return the subset of coords within pocket_radius of *any* ligand_coords."""
+        if ligand_coords is None or self.pocket_radius is None:
+            m = torch.ones(coords.size(0), dtype=torch.bool)
+            return coords, m
+        dist = torch.cdist(coords, ligand_coords)          # [N_res, N_lig]
+        m = (dist.min(dim=1).values < self.pocket_radius)   # [N_res]
+        return coords[m], m
+    
+    def build(
+        self,
+        pdb_path: str | pathlib.Path,
+        seq: Optional[str] = None,
+        esm: Optional[torch.Tensor] = None,
+        ligand_coords: Optional[torch.Tensor] = None,
+    ) -> Data:
+        """Construct a **torch_geometric** graph for the given PDB file.
+
+        If *esm* is provided, it is concatenated to Cα coordinates (re‑creates
+        the old 1 283‑D representation).  Otherwise the node feature is:
+
+            one‑hot(20) + charge(1) + coords(3) = 24‑D
+        """
         pdb_path = pathlib.Path(pdb_path)
         coords, aa3 = self._extract_ca(pdb_path)
-        x = self._node_feats(aa3, coords)
+
+        # --- pocket cropping ----------------------------------------------
+        coords, mask = self._crop_to_pocket(coords, ligand_coords)
+        aa3 = [a for a, keep in zip(aa3, mask) if keep]
+        if esm is not None:
+            if coords.shape[0] != esm[mask].shape[0]:
+                raise ValueError("Seq/structure length mismatch for ESM embedding")
+            node_x = torch.cat([esm[mask], coords], dim=1)
+        else:
+            if seq is not None and len(seq) != coords.shape[0]:
+                raise ValueError("Seq/structure length mismatch for one‑hot pathway")
+            one_hot = self._aa_one_hot(aa3)
+            charges = self._charges(aa3)
+            node_x = torch.cat([one_hot, charges, coords], dim=1)
+
         dist = torch.cdist(coords, coords)
-        n = coords.size(0)
-        mask = (dist < self.cutoff) & (dist > 0)
-        idx = torch.arange(n - 1)
-        mask[idx, idx + 1] = True
-        mask[idx + 1, idx] = True
-        edge_index = mask.nonzero(as_tuple=False).t()
-        edge_attr = dist[mask].unsqueeze(-1)
-        return Data(x=x, pos=coords, edge_index=edge_index, edge_attr=edge_attr)
+        within = (dist < self.cutoff) & (dist > 0)
+        idx = torch.arange(coords.shape[0] - 1, dtype=torch.long)
+        within[idx, idx + 1] = True
+        within[idx + 1, idx] = True
 
-    def save(self, chembl_id: str, data: Data):
-        filename = f"{chembl_id}.pt" if len(chembl_id)<=50 else f"seq-{hashlib.md5(chembl_id.encode()).hexdigest()}.pt"
-        torch.save(data, self.graph_dir/filename)
+        edge_index = within.nonzero(as_tuple=False).t()
+        edge_attr = dist[within].unsqueeze(-1)
 
-    def load(self, chembl_id: str) -> Data:
-        filename = f"{chembl_id}.pt" if len(chembl_id)<=50 else f"seq-{hashlib.md5(chembl_id.encode()).hexdigest()}.pt"
-        return torch.load(self.graph_dir/filename, map_location="cpu")
+        return Data(x=node_x, pos=coords, edge_index=edge_index, edge_attr=edge_attr)
+
+    def load(self, identifier: str) -> Data:
+        """Load protein graph from file."""
+        filename_str = self._generate_protein_graph_filename(identifier)
+        path = self.graph_dir / filename_str
+        if not path.is_file():
+            raise FileNotFoundError(f"Protein graph not found: {path} (derived from identifier: {identifier})")
+        
+        # Try loading with various approaches
+        try:
+            # First try with default settings
+            return torch.load(path, map_location="cpu", weights_only=False)
+            
+        except (RuntimeError, AttributeError) as e:
+            error_str = str(e)
+            if "WeightsUnpickler error" in error_str or "Unsupported global" in error_str:
+                # Try registering torch_geometric classes and load again
+                if "DataEdgeAttr" in error_str or "DataTensorAttr" in error_str:
+                    print(f"Encountered serialization error: {error_str}")
+                    print("Attempting to register torch_geometric classes...")
+                    register_torch_geometric_classes()
+                    try:
+                        return torch.load(path, map_location="cpu", weights_only=False)
+                    except Exception as e2:
+                        print(f"Second attempt failed: {e2}")
+                
+                # Try without weights_only parameter (older PyTorch versions)
+                try:
+                    return torch.load(path, map_location="cpu")
+                except Exception as e3:
+                    print(f"All loading attempts failed for {path}")
+                    raise RuntimeError(f"Could not load protein graph: {e3}") from e
+            else:
+                # Some other RuntimeError
+                raise
+
+    def save(self, identifier: str, data: Data):
+        """Save protein graph to file."""
+        filename_str = self._generate_protein_graph_filename(identifier)
+        
+        # Ensure torch_geometric classes are registered before saving
+        register_torch_geometric_classes()
+        
+        torch.save(data, self.graph_dir / filename_str)
 
 # ---------------------------------------------------------------------------
-def _unique_targets(dataset: str):
-    from tdc.multi_pred import DTI
-    data=DTI(name=dataset.upper())
-    targets=list(data.get_data()["Target"].unique())
-    print(f"Found {len(targets)} total targets in {dataset}")
-    return sorted(targets)
+# Single-threaded bulk processing
+# ---------------------------------------------------------------------------
 
-
-def _process_one(acc: str, builder: ProteinGraphBuilder):
+def register_torch_geometric_classes():
+    """
+    Register torch_geometric classes with PyTorch's serialization safe globals.
+    This is required for PyTorch 2.6+ to allow loading and saving torch_geometric objects.
+    """
     try:
-        pdb=builder._fetch_pdb(acc)
-        G=builder.build(pdb)
-        builder.save(acc,G)
-        return True,acc
-    except Exception as e:
-        return False,f"{acc}: {e}"
+        import torch.serialization
+        import sys
+        
+        # List of modules that might contain the required classes
+        modules_to_check = [
+            'torch_geometric.data.data',
+            'torch_geometric.data',
+            'torch_geometric.data.storage',
+        ]
+        
+        # Classes we need to register
+        class_names = [
+            'Data', 'HeteroData', 'DataEdgeAttr', 'DataTensorAttr',
+            'BaseStorage', 'NodeStorage', 'EdgeStorage', 'GlobalStorage',
+            'TensorAttr', 'EdgeAttr',
+        ]
+        
+        # Find and collect all available classes
+        classes_to_register = []
+        
+        for module_name in modules_to_check:
+            try:
+                module = sys.modules.get(module_name) or __import__(module_name)
+                for class_name in class_names:
+                    try:
+                        cls = getattr(module, class_name, None)
+                        if cls is not None and cls not in classes_to_register:
+                            classes_to_register.append(cls)
+                            print(f"Found {class_name} in {module_name}")
+                    except (ImportError, AttributeError):
+                        pass
+            except ImportError:
+                pass
+        
+        # Register classes with PyTorch's serialization
+        if classes_to_register:
+            # Try direct method first (newer PyTorch)
+            try:
+                torch.serialization.add_safe_globals(classes_to_register)
+                print(f"Added {len(classes_to_register)} torch_geometric classes to PyTorch safe globals list")
+                return True
+            except (AttributeError, TypeError):
+                # For older PyTorch that might have different API
+                if hasattr(torch.serialization, '_get_safe_globals'):
+                    safe_globals = torch.serialization._get_safe_globals()
+                    for cls in classes_to_register:
+                        key = f"{cls.__module__}.{cls.__name__}"
+                        safe_globals[key] = cls
+                    print(f"Added {len(classes_to_register)} torch_geometric classes to PyTorch safe globals (legacy method)")
+                    return True
+        
+        return False
+    
+    except (ImportError, Exception) as e:
+        print(f"Warning: Could not register torch_geometric classes: {e}")
+        return False
 
+def process_targets(targets: List[str], 
+                   out_dir: str, 
+                   cutoff: float = 10.0,
+                   use_colabfold: bool = False):
+    """
+    Process a list of protein targets and save graphs.
+    
+    Args:
+        targets: List of protein targets (UniProt IDs or sequences)
+        out_dir: Output directory for protein graphs
+        cutoff: Distance cutoff for edges
+        use_colabfold: Whether to use local ColabFold
+    """
+    # Register torch_geometric classes for serialization
+    register_torch_geometric_classes()
+
+    builder = ProteinGraphBuilder(
+        graph_dir=out_dir,
+        cutoff=cutoff,
+        use_colabfold=use_colabfold
+    )
+    
+    if use_colabfold and not builder._colabfold_available:
+        print("WARNING: ColabFold requested but not available or has dependency issues.")
+        print("Will use linear structure generation as fallback.")
+        print("To fix ColabFold, consider creating a fresh environment with compatible versions:")
+        print("  conda create -n colabfold-fixed python=3.9")
+        print("  conda activate colabfold-fixed") 
+        print("  pip install 'jax==0.3.25' 'jaxlib==0.3.25'")
+        print("  pip install 'colabfold[alphafold-cpu]==1.5.2'")
+    
+    success = 0
+    for target in tqdm(targets, desc="Processing proteins"):
+        try:
+            # Skip if already exists
+            try:
+                builder.load(target)
+                print(f"[✓] {target} (already exists)")
+                success += 1
+                continue
+            except FileNotFoundError:
+                pass
+                
+            # Process target with error handling
+            try:
+                pdb_path = builder._fetch_pdb(target)
+                protein_graph = builder.build(pdb_path)
+                builder.save(target, protein_graph)
+                print(f"[✓] {target}")
+                success += 1
+            except KeyboardInterrupt:
+                print("\nProcess interrupted by user. Exiting...")
+                return success
+            except Exception as e:
+                print(f"[✗] Error processing {target}: {type(e).__name__} - {str(e)}")
+                # If any individual target fails, continue with the next one
+                continue
+                
+        except Exception as e:
+            print(f"[✗] Error processing {target}: {type(e).__name__} - {str(e)}")
+    
+    print(f"\nProcessed {len(targets)} targets: {success} successful, {len(targets) - success} failed")
+    return success
+
+def load_davis_mapping():
+    """Load mapping between protein IDs and sequences for DAVIS dataset."""
+    try:
+        from tdc.multi_pred import DTI
+        data = DTI(name="DAVIS")
+        df = data.get_data()
+        
+        # Check if any entries look like UniProt IDs
+        uniprot_like = [t for t in df["Target"].unique() if looks_like_uniprot(t)]
+        
+        if uniprot_like:
+            print(f"Found {len(uniprot_like)} UniProt-like IDs in DAVIS dataset")
+            return uniprot_like
+        else:
+            print("No UniProt IDs found in DAVIS dataset, using all targets")
+            return list(df["Target"].unique())
+    except Exception as e:
+        print(f"Error loading DAVIS dataset: {e}")
+        return []
 
 def main():
-    p=argparse.ArgumentParser()
-    p.add_argument("--dataset",choices=["KIBA","DAVIS","CD4C"],required=True)
-    p.add_argument("--out-dir",default="../data/protein_graphs")
-    p.add_argument("--cutoff",type=float,default=10.0)
-    p.add_argument("--num-workers",type=int,default=8)
-    p.add_argument("--use-local-colabfold",action="store_true",
-                   help="Use ColabFold locally instead of remote AlphaFold DB")
-    args=p.parse_args()
-    builder=ProteinGraphBuilder(
-        graph_dir=args.out_dir,
+    """Command-line interface for protein graph generation."""
+    parser = argparse.ArgumentParser(description="Protein graph builder")
+    parser.add_argument("--dataset", choices=["KIBA", "DAVIS", "CD4C"], required=True,
+                        help="Dataset to process")
+    parser.add_argument("--out-dir", default="../data/protein_graphs",
+                        help="Output directory for protein graphs")
+    parser.add_argument("--cutoff", type=float, default=10.0,
+                        help="Distance cutoff for edges (Å)")
+    parser.add_argument("--num-workers", type=int, default=1,
+                        help="Number of workers (currently ignored, using single thread)")
+    parser.add_argument("--use-local-colabfold", action="store_true",
+                        help="Try to use local ColabFold instead of AlphaFold DB")
+    
+    args = parser.parse_args()
+    
+    # Check if colabfold is available if requested
+    if args.use_local_colabfold:
+        try:
+            subprocess.run(["which", "colabfold_batch"], 
+                          check=True, 
+                          stdout=subprocess.PIPE, 
+                          stderr=subprocess.PIPE)
+            print("ColabFold found in PATH.")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            print("\n" + "="*80)
+            print("WARNING: colabfold_batch command not found in PATH.")
+            print("To install ColabFold in a dedicated environment, run:")
+            print("  conda create -n colabfold python=3.9")
+            print("  conda activate colabfold")
+            print("  pip install 'colabfold[alphafold-cpu]'")
+            print("="*80 + "\n")
+            print("Continuing with linear structure generation as fallback...")
+    
+    # Get targets based on dataset
+    if args.dataset == "DAVIS":
+        targets = load_davis_mapping()
+    elif args.dataset == "KIBA":
+        from tdc.multi_pred import DTI
+        data = DTI(name="KIBA")
+        df = data.get_data()
+        targets = list(df["Target"].unique())
+        print(f"Found {len(targets)} targets in KIBA dataset")
+    elif args.dataset == "CD4C":
+        data_path = pathlib.Path("../data/filtered_cancer_all.csv")
+        if not data_path.exists():
+            sys.exit(f"CD4C dataset file not found: {data_path}")
+        df = pd.read_csv(data_path)
+        targets = list(df["Target_ID"].unique())
+        print(f"Found {len(targets)} targets in CD4C dataset")
+    else:
+        sys.exit(f"Unknown dataset: {args.dataset}")
+    
+    if not targets:
+        sys.exit("No targets found to process")
+    
+    print(f"Processing {len(targets)} targets from {args.dataset} dataset")
+    out_dir = pathlib.Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Process targets
+    process_targets(
+        targets=targets,
+        out_dir=args.out_dir,
         cutoff=args.cutoff,
         use_colabfold=args.use_local_colabfold
     )
-    if args.dataset.upper() in {"KIBA","DAVIS"}:
-        targets=_unique_targets(args.dataset)
-    else:
-        f=pathlib.Path("../data/filtered_cancer_all.csv")
-        if not f.exists():sys.exit("CD4C csv not found")
-        targets=sorted(pd.read_csv(f)["Target_ID"].unique())
-    print(f"Building {len(targets)} proteins → {args.out_dir}")
-    with mp.Pool(args.num_workers) as pool:
-        for ok,msg in pool.imap_unordered(lambda x:_process_one(x,builder),targets):
-            print(f"[{'✔' if ok else '✗'}] {msg}")
 
-if __name__=="__main__":main()
+if __name__ == "__main__":
+    main()

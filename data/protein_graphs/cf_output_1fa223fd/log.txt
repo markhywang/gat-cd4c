@@ -1,0 +1,39 @@
+2025-05-17 18:35:04,552 Running colabfold 1.5.4
+2025-05-17 18:35:04,596 Unable to initialize backend 'cuda': Unable to use CUDA because of the following issues with CUDA components:
+Unable to load cuDNN. Is it installed?
+Traceback (most recent call last):
+  File "/opt/miniconda3/lib/python3.12/site-packages/colabfold/batch.py", line 1268, in run
+    jax.tools.colab_tpu.setup_tpu()
+  File "/opt/miniconda3/lib/python3.12/site-packages/jax/tools/colab_tpu.py", line 20, in setup_tpu
+    raise RuntimeError(
+RuntimeError: jax.tools.colab_tpu.setup_tpu() was required for older JAX versions running on older generations of TPUs, and should no longer be used.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/miniconda3/lib/python3.12/site-packages/jax/_src/xla_bridge.py", line 339, in _version_check
+    version = get_version()
+              ^^^^^^^^^^^^^
+RuntimeError: cuDNN not found.
+
+2025-05-17 18:35:04,596 Unable to initialize backend 'rocm': NOT_FOUND: Could not find registered platform with name: "rocm". Available platform names are: CUDA
+2025-05-17 18:35:04,597 Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
+2025-05-17 18:35:04,597 CUDA backend failed to initialize: Unable to use CUDA because of the following issues with CUDA components:
+Unable to load cuDNN. Is it installed?
+Traceback (most recent call last):
+  File "/opt/miniconda3/lib/python3.12/site-packages/colabfold/batch.py", line 1268, in run
+    jax.tools.colab_tpu.setup_tpu()
+  File "/opt/miniconda3/lib/python3.12/site-packages/jax/tools/colab_tpu.py", line 20, in setup_tpu
+    raise RuntimeError(
+RuntimeError: jax.tools.colab_tpu.setup_tpu() was required for older JAX versions running on older generations of TPUs, and should no longer be used.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/miniconda3/lib/python3.12/site-packages/jax/_src/xla_bridge.py", line 339, in _version_check
+    version = get_version()
+              ^^^^^^^^^^^^^
+RuntimeError: cuDNN not found.
+.(Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
+2025-05-17 18:35:04,597 WARNING: no GPU detected, will be using CPU
+2025-05-17 18:35:06,308 Found 2 citations for tools or databases
