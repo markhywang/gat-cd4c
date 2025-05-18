@@ -42,7 +42,7 @@ if conda env list | grep -q "^$ENV_NAME "; then
 fi
 
 echo "Creating new conda environment '$ENV_NAME'..."
-conda create -y -n $ENV_NAME python=3.12.2
+conda create -y -n $ENV_NAME python=3.10
 
 echo "Activating conda environment..."
 eval "$(conda shell.bash hook)"
@@ -54,11 +54,11 @@ echo "Installing CUDA-compatible JAX..."
 pip install jax==0.4.28 jaxlib==0.4.28+cuda12.cudnn89 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 echo "Installing ColabFold..."
-conda install -y -c conda-forge -c bioconda colabfold=1.5.5
+conda install -y -c conda-forge -c bioconda colabfold=1.5.4
 
 # Install additional dependencies
 echo "Installing additional dependencies..."
-conda install -y -c conda-forge -c pytorch pytorch torchvision torchaudio pytorch-cuda=12.1
+conda install -y -c conda-forge -c pytorch pytorch torchvision torchaudio pytorch-cuda=12.4
 pip install torch-geometric pandas requests tqdm
 
 # Check if colabfold_batch is available
