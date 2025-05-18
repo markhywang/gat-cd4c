@@ -51,7 +51,7 @@ conda activate $ENV_NAME
 # Install CUDA compatible packages
 echo "Installing CUDA-compatible JAX..."
 # For CUDA 12.8, we need to use newer JAX versions
-pip install --upgrade "jax[cuda12]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install jax==0.4.28 jaxlib==0.4.28+cuda12.cudnn89 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 echo "Installing ColabFold..."
 conda install -y -c conda-forge -c bioconda colabfold=1.5.5
