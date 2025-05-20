@@ -1,0 +1,29 @@
+2025-05-18 09:58:57,744 Running colabfold 1.5.4
+2025-05-18 09:58:57,927 Unable to initialize backend 'rocm': NOT_FOUND: Could not find registered platform with name: "rocm". Available platform names are: CUDA
+2025-05-18 09:58:57,929 Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
+2025-05-18 09:58:59,897 Running on GPU
+2025-05-18 09:58:59,993 Found 2 citations for tools or databases
+2025-05-18 09:58:59,993 Query 1/1: seq (length 986)
+2025-05-18 10:02:01,482 alphafold2_ptm_model_1_seed_000 recycle=0 pLDDT=26.1 pTM=0.201
+2025-05-18 10:02:25,347 alphafold2_ptm_model_1_seed_000 recycle=1 pLDDT=25.3 pTM=0.203 tol=21.2
+2025-05-18 10:02:49,352 alphafold2_ptm_model_1_seed_000 recycle=2 pLDDT=26.5 pTM=0.214 tol=15.9
+2025-05-18 10:03:13,458 alphafold2_ptm_model_1_seed_000 recycle=3 pLDDT=26.6 pTM=0.214 tol=10.8
+2025-05-18 10:03:13,459 alphafold2_ptm_model_1_seed_000 took 248.0s (3 recycles)
+2025-05-18 10:03:38,145 alphafold2_ptm_model_2_seed_000 recycle=0 pLDDT=30.7 pTM=0.19
+2025-05-18 10:04:02,311 alphafold2_ptm_model_2_seed_000 recycle=1 pLDDT=31.2 pTM=0.199 tol=26.2
+2025-05-18 10:04:26,474 alphafold2_ptm_model_2_seed_000 recycle=2 pLDDT=31.9 pTM=0.23 tol=17.4
+2025-05-18 10:04:50,644 alphafold2_ptm_model_2_seed_000 recycle=3 pLDDT=32.8 pTM=0.25 tol=12.4
+2025-05-18 10:04:50,645 alphafold2_ptm_model_2_seed_000 took 96.6s (3 recycles)
+2025-05-18 10:05:15,421 alphafold2_ptm_model_3_seed_000 recycle=0 pLDDT=22.2 pTM=0.178
+2025-05-18 10:05:39,665 alphafold2_ptm_model_3_seed_000 recycle=1 pLDDT=21.6 pTM=0.178 tol=15.8
+2025-05-18 10:06:03,920 alphafold2_ptm_model_3_seed_000 recycle=2 pLDDT=21.5 pTM=0.182 tol=12
+2025-05-18 10:06:28,136 alphafold2_ptm_model_3_seed_000 recycle=3 pLDDT=22.1 pTM=0.18 tol=6.82
+2025-05-18 10:06:28,138 alphafold2_ptm_model_3_seed_000 took 96.9s (3 recycles)
+2025-05-18 10:06:53,027 alphafold2_ptm_model_4_seed_000 recycle=0 pLDDT=22.5 pTM=0.169
+2025-05-18 10:07:17,353 alphafold2_ptm_model_4_seed_000 recycle=1 pLDDT=23 pTM=0.175 tol=12.8
+2025-05-18 10:07:41,708 alphafold2_ptm_model_4_seed_000 recycle=2 pLDDT=23.5 pTM=0.182 tol=9.66
+2025-05-18 10:08:06,043 alphafold2_ptm_model_4_seed_000 recycle=3 pLDDT=24 pTM=0.182 tol=5.32
+2025-05-18 10:08:06,044 alphafold2_ptm_model_4_seed_000 took 97.3s (3 recycles)
+2025-05-18 10:08:30,854 alphafold2_ptm_model_5_seed_000 recycle=0 pLDDT=23.7 pTM=0.166
+2025-05-18 10:08:55,210 alphafold2_ptm_model_5_seed_000 recycle=1 pLDDT=24 pTM=0.178 tol=21.3
+2025-05-18 10:09:19,528 alphafold2_ptm_model_5_seed_000 recycle=2 pLDDT=23.7 pTM=0.174 tol=10.4

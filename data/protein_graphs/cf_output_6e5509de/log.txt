@@ -1,39 +1,29 @@
-2025-05-17 18:34:58,749 Running colabfold 1.5.4
-2025-05-17 18:34:58,790 Unable to initialize backend 'cuda': Unable to use CUDA because of the following issues with CUDA components:
-Unable to load cuDNN. Is it installed?
-Traceback (most recent call last):
-  File "/opt/miniconda3/lib/python3.12/site-packages/colabfold/batch.py", line 1268, in run
-    jax.tools.colab_tpu.setup_tpu()
-  File "/opt/miniconda3/lib/python3.12/site-packages/jax/tools/colab_tpu.py", line 20, in setup_tpu
-    raise RuntimeError(
-RuntimeError: jax.tools.colab_tpu.setup_tpu() was required for older JAX versions running on older generations of TPUs, and should no longer be used.
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/opt/miniconda3/lib/python3.12/site-packages/jax/_src/xla_bridge.py", line 339, in _version_check
-    version = get_version()
-              ^^^^^^^^^^^^^
-RuntimeError: cuDNN not found.
-
-2025-05-17 18:34:58,790 Unable to initialize backend 'rocm': NOT_FOUND: Could not find registered platform with name: "rocm". Available platform names are: CUDA
-2025-05-17 18:34:58,791 Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
-2025-05-17 18:34:58,791 CUDA backend failed to initialize: Unable to use CUDA because of the following issues with CUDA components:
-Unable to load cuDNN. Is it installed?
-Traceback (most recent call last):
-  File "/opt/miniconda3/lib/python3.12/site-packages/colabfold/batch.py", line 1268, in run
-    jax.tools.colab_tpu.setup_tpu()
-  File "/opt/miniconda3/lib/python3.12/site-packages/jax/tools/colab_tpu.py", line 20, in setup_tpu
-    raise RuntimeError(
-RuntimeError: jax.tools.colab_tpu.setup_tpu() was required for older JAX versions running on older generations of TPUs, and should no longer be used.
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/opt/miniconda3/lib/python3.12/site-packages/jax/_src/xla_bridge.py", line 339, in _version_check
-    version = get_version()
-              ^^^^^^^^^^^^^
-RuntimeError: cuDNN not found.
-.(Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
-2025-05-17 18:34:58,791 WARNING: no GPU detected, will be using CPU
-2025-05-17 18:35:00,506 Found 2 citations for tools or databases
+2025-05-18 00:43:02,674 Running colabfold 1.5.4
+2025-05-18 00:43:02,842 Unable to initialize backend 'rocm': NOT_FOUND: Could not find registered platform with name: "rocm". Available platform names are: CUDA
+2025-05-18 00:43:02,844 Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
+2025-05-18 00:43:04,902 Running on GPU
+2025-05-18 00:43:05,004 Found 2 citations for tools or databases
+2025-05-18 00:43:05,005 Query 1/1: seq (length 961)
+2025-05-18 00:46:13,789 alphafold2_ptm_model_1_seed_000 recycle=0 pLDDT=32.9 pTM=0.221
+2025-05-18 00:46:45,253 alphafold2_ptm_model_1_seed_000 recycle=1 pLDDT=32.3 pTM=0.243 tol=23.6
+2025-05-18 00:47:09,314 alphafold2_ptm_model_1_seed_000 recycle=2 pLDDT=33.2 pTM=0.25 tol=18.3
+2025-05-18 00:47:32,479 alphafold2_ptm_model_1_seed_000 recycle=3 pLDDT=34.4 pTM=0.255 tol=12.6
+2025-05-18 00:47:32,481 alphafold2_ptm_model_1_seed_000 took 261.0s (3 recycles)
+2025-05-18 00:47:56,290 alphafold2_ptm_model_2_seed_000 recycle=0 pLDDT=35 pTM=0.215
+2025-05-18 00:48:19,575 alphafold2_ptm_model_2_seed_000 recycle=1 pLDDT=35.4 pTM=0.236 tol=30.1
+2025-05-18 00:48:42,908 alphafold2_ptm_model_2_seed_000 recycle=2 pLDDT=35.3 pTM=0.241 tol=11
+2025-05-18 00:49:06,262 alphafold2_ptm_model_2_seed_000 recycle=3 pLDDT=35.7 pTM=0.248 tol=8.38
+2025-05-18 00:49:06,263 alphafold2_ptm_model_2_seed_000 took 93.2s (3 recycles)
+2025-05-18 00:49:30,153 alphafold2_ptm_model_3_seed_000 recycle=0 pLDDT=27.8 pTM=0.191
+2025-05-18 00:49:53,603 alphafold2_ptm_model_3_seed_000 recycle=1 pLDDT=27.5 pTM=0.205 tol=19.6
+2025-05-18 00:50:16,985 alphafold2_ptm_model_3_seed_000 recycle=2 pLDDT=27.5 pTM=0.216 tol=14.9
+2025-05-18 00:50:40,371 alphafold2_ptm_model_3_seed_000 recycle=3 pLDDT=27.6 pTM=0.218 tol=10.3
+2025-05-18 00:50:40,373 alphafold2_ptm_model_3_seed_000 took 93.6s (3 recycles)
+2025-05-18 00:51:04,380 alphafold2_ptm_model_4_seed_000 recycle=0 pLDDT=28.8 pTM=0.208
+2025-05-18 00:51:27,835 alphafold2_ptm_model_4_seed_000 recycle=1 pLDDT=27.8 pTM=0.208 tol=17.5
+2025-05-18 00:51:51,257 alphafold2_ptm_model_4_seed_000 recycle=2 pLDDT=27.7 pTM=0.209 tol=14.4
+2025-05-18 00:52:14,745 alphafold2_ptm_model_4_seed_000 recycle=3 pLDDT=27.7 pTM=0.208 tol=17.1
+2025-05-18 00:52:14,746 alphafold2_ptm_model_4_seed_000 took 93.8s (3 recycles)
+2025-05-18 00:52:38,687 alphafold2_ptm_model_5_seed_000 recycle=0 pLDDT=26.9 pTM=0.198
+2025-05-18 00:53:02,092 alphafold2_ptm_model_5_seed_000 recycle=1 pLDDT=25.6 pTM=0.195 tol=25.2
+2025-05-18 00:53:25,516 alphafold2_ptm_model_5_seed_000 recycle=2 pLDDT=25.2 pTM=0.194 tol=12.9

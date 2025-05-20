@@ -1,0 +1,1363 @@
+HEADER    LINEAR STRUCTURE (FALLBACK)              
+TITLE     LINEAR STRUCTURE FOR MASDSPARSLDEIDLSALRDPAGIFELVELVGNGTYGQVYKGRHVKTGQLAAIKVMDVTGDEEEEIKQEINMLKKYSHHRNIATYYGAFIKKNPPGMDDQLWLVMEFCGAGSVTDLIKNTKGNTLKEEWIAYICREILRGLSHLHQHKVIHRDIKGQNVLLTENAEVKLVDFGVSAQLDRTVGRRNTFIGTPYWMAPEVIACDENPDATYDFKSDLWSLGITAIEMAEGAPPLCDMHPMRALFLIPRNPAPRLKSKKWSKKFQSFIESCLVKNHSQRPATEQLMKHPFIRDQPNERQVRIQLKDHIDRTKKKRGEKDETEYEYSGSEEEEEENDSGEPSSILNLPGESTLRRDFLRLQLANKERSEALRRQQLEQQQRENEEHKRQLLAERQKRIEEQKEQRRRLEEQQRREKELRKQQEREQRRHYEEQMRREEERRRAEHEQEYIRRQLEEEQRQLEILQQQLLHEQALLLEYKRKQLEEQRQAERLQRQLKQERDYLVSLQHQRQEQRPVEKKPLYHYKEGMSPSEKPAWAKEVEERSRLNRQSSPAMPHKVANRISDPNLPPRSESFSISGVQPARTPPMLRPVDPQIPHLVAVKSQGPALTASQSVHEQPTKGLSGFQEALNVTSHRVEMPRQNSDPTSENPPLPTRIEKFDRSSWLRQEEDIPPKVPQRTTSISPALARKNSPGNGSALGPRLGSQPIRASNPDLRRTEPILESPLQRTSSGSSSSSSTPSSQPSSQGGSQPGSQAGSSERTRVRANSKSEGSPVLPHEPAKVKPEESRDITRPSRPASYKKAIDEDLTALAKELRELRIEETNRPMKKVTDYSSSSEESESSEEEEEDGESETHDGTVAVSDIPRLIPTGAPGSNEQYNVGMVGTHGLETSHADSFSGSISREGTLMIRETSGEKKRSGHSDSNGFAGHINLPDLVQQSHSPAGTPTEGLGRVSTHSQEMDSGTEYGMGSSTKASFTPFVDPRVYQTSPTDEDEEDEESSAAALFTSELLRQEQAKLNEARKISVVNVNPTNIRPHSDTPEIRKYKKRFNSEILCAALWGVNLLVGTENGLMLLDRSGQGKVYNLINRRRFQQMDVLEGLNVLVTISGKKNKLRVYYLSWLRNRILHNDPEVEKKQGWITVGDLEGCIHYKVVKYERIKFLVIALKNAVEIYAWAPKPYHKFMAFKSFADLQHKPLLVDLTVEEGQRLKVIFGSHTGFHVIDVDSGNSYDIYIPSHIQGNITPHAIVILPKTDGMEMLVCYEDEGVYVNTYGRITKDVVLQWGEMPTSVAYIHSNQIMGWGEKAIEIRSVETGHLDGVFMHKRAQRLKFLCERNDKVFFASVRSGGSSQVFFMTLNRNSMMNW              
+ATOM      1  CA  MET A   1       0.000   0.000   0.000  1.00  0.00           C  
+ATOM      2  CA  ALA A   2       3.800   0.000   0.000  1.00  0.00           C  
+ATOM      3  CA  SER A   3       7.600   0.000   0.000  1.00  0.00           C  
+ATOM      4  CA  ASP A   4      11.400   0.000   0.000  1.00  0.00           C  
+ATOM      5  CA  SER A   5      15.200   0.000   0.000  1.00  0.00           C  
+ATOM      6  CA  PRO A   6      19.000   0.000   0.000  1.00  0.00           C  
+ATOM      7  CA  ALA A   7      22.800   0.000   0.000  1.00  0.00           C  
+ATOM      8  CA  ARG A   8      26.600   0.000   0.000  1.00  0.00           C  
+ATOM      9  CA  SER A   9      30.400   0.000   0.000  1.00  0.00           C  
+ATOM     10  CA  LEU A  10      34.200   0.000   0.000  1.00  0.00           C  
+ATOM     11  CA  ASP A  11      38.000   0.000   0.000  1.00  0.00           C  
+ATOM     12  CA  GLU A  12      41.800   0.000   0.000  1.00  0.00           C  
+ATOM     13  CA  ILE A  13      45.600   0.000   0.000  1.00  0.00           C  
+ATOM     14  CA  ASP A  14      49.400   0.000   0.000  1.00  0.00           C  
+ATOM     15  CA  LEU A  15      53.200   0.000   0.000  1.00  0.00           C  
+ATOM     16  CA  SER A  16      57.000   0.000   0.000  1.00  0.00           C  
+ATOM     17  CA  ALA A  17      60.800   0.000   0.000  1.00  0.00           C  
+ATOM     18  CA  LEU A  18      64.600   0.000   0.000  1.00  0.00           C  
+ATOM     19  CA  ARG A  19      68.400   0.000   0.000  1.00  0.00           C  
+ATOM     20  CA  ASP A  20      72.200   0.000   0.000  1.00  0.00           C  
+ATOM     21  CA  PRO A  21      76.000   0.000   0.000  1.00  0.00           C  
+ATOM     22  CA  ALA A  22      79.800   0.000   0.000  1.00  0.00           C  
+ATOM     23  CA  GLY A  23      83.600   0.000   0.000  1.00  0.00           C  
+ATOM     24  CA  ILE A  24      87.400   0.000   0.000  1.00  0.00           C  
+ATOM     25  CA  PHE A  25      91.200   0.000   0.000  1.00  0.00           C  
+ATOM     26  CA  GLU A  26      95.000   0.000   0.000  1.00  0.00           C  
+ATOM     27  CA  LEU A  27      98.800   0.000   0.000  1.00  0.00           C  
+ATOM     28  CA  VAL A  28     102.600   0.000   0.000  1.00  0.00           C  
+ATOM     29  CA  GLU A  29     106.400   0.000   0.000  1.00  0.00           C  
+ATOM     30  CA  LEU A  30     110.200   0.000   0.000  1.00  0.00           C  
+ATOM     31  CA  VAL A  31     114.000   0.000   0.000  1.00  0.00           C  
+ATOM     32  CA  GLY A  32     117.800   0.000   0.000  1.00  0.00           C  
+ATOM     33  CA  ASN A  33     121.600   0.000   0.000  1.00  0.00           C  
+ATOM     34  CA  GLY A  34     125.400   0.000   0.000  1.00  0.00           C  
+ATOM     35  CA  THR A  35     129.200   0.000   0.000  1.00  0.00           C  
+ATOM     36  CA  TYR A  36     133.000   0.000   0.000  1.00  0.00           C  
+ATOM     37  CA  GLY A  37     136.800   0.000   0.000  1.00  0.00           C  
+ATOM     38  CA  GLN A  38     140.600   0.000   0.000  1.00  0.00           C  
+ATOM     39  CA  VAL A  39     144.400   0.000   0.000  1.00  0.00           C  
+ATOM     40  CA  TYR A  40     148.200   0.000   0.000  1.00  0.00           C  
+ATOM     41  CA  LYS A  41     152.000   0.000   0.000  1.00  0.00           C  
+ATOM     42  CA  GLY A  42     155.800   0.000   0.000  1.00  0.00           C  
+ATOM     43  CA  ARG A  43     159.600   0.000   0.000  1.00  0.00           C  
+ATOM     44  CA  HIS A  44     163.400   0.000   0.000  1.00  0.00           C  
+ATOM     45  CA  VAL A  45     167.200   0.000   0.000  1.00  0.00           C  
+ATOM     46  CA  LYS A  46     171.000   0.000   0.000  1.00  0.00           C  
+ATOM     47  CA  THR A  47     174.800   0.000   0.000  1.00  0.00           C  
+ATOM     48  CA  GLY A  48     178.600   0.000   0.000  1.00  0.00           C  
+ATOM     49  CA  GLN A  49     182.400   0.000   0.000  1.00  0.00           C  
+ATOM     50  CA  LEU A  50     186.200   0.000   0.000  1.00  0.00           C  
+ATOM     51  CA  ALA A  51     190.000   0.000   0.000  1.00  0.00           C  
+ATOM     52  CA  ALA A  52     193.800   0.000   0.000  1.00  0.00           C  
+ATOM     53  CA  ILE A  53     197.600   0.000   0.000  1.00  0.00           C  
+ATOM     54  CA  LYS A  54     201.400   0.000   0.000  1.00  0.00           C  
+ATOM     55  CA  VAL A  55     205.200   0.000   0.000  1.00  0.00           C  
+ATOM     56  CA  MET A  56     209.000   0.000   0.000  1.00  0.00           C  
+ATOM     57  CA  ASP A  57     212.800   0.000   0.000  1.00  0.00           C  
+ATOM     58  CA  VAL A  58     216.600   0.000   0.000  1.00  0.00           C  
+ATOM     59  CA  THR A  59     220.400   0.000   0.000  1.00  0.00           C  
+ATOM     60  CA  GLY A  60     224.200   0.000   0.000  1.00  0.00           C  
+ATOM     61  CA  ASP A  61     228.000   0.000   0.000  1.00  0.00           C  
+ATOM     62  CA  GLU A  62     231.800   0.000   0.000  1.00  0.00           C  
+ATOM     63  CA  GLU A  63     235.600   0.000   0.000  1.00  0.00           C  
+ATOM     64  CA  GLU A  64     239.400   0.000   0.000  1.00  0.00           C  
+ATOM     65  CA  GLU A  65     243.200   0.000   0.000  1.00  0.00           C  
+ATOM     66  CA  ILE A  66     247.000   0.000   0.000  1.00  0.00           C  
+ATOM     67  CA  LYS A  67     250.800   0.000   0.000  1.00  0.00           C  
+ATOM     68  CA  GLN A  68     254.600   0.000   0.000  1.00  0.00           C  
+ATOM     69  CA  GLU A  69     258.400   0.000   0.000  1.00  0.00           C  
+ATOM     70  CA  ILE A  70     262.200   0.000   0.000  1.00  0.00           C  
+ATOM     71  CA  ASN A  71     266.000   0.000   0.000  1.00  0.00           C  
+ATOM     72  CA  MET A  72     269.800   0.000   0.000  1.00  0.00           C  
+ATOM     73  CA  LEU A  73     273.600   0.000   0.000  1.00  0.00           C  
+ATOM     74  CA  LYS A  74     277.400   0.000   0.000  1.00  0.00           C  
+ATOM     75  CA  LYS A  75     281.200   0.000   0.000  1.00  0.00           C  
+ATOM     76  CA  TYR A  76     285.000   0.000   0.000  1.00  0.00           C  
+ATOM     77  CA  SER A  77     288.800   0.000   0.000  1.00  0.00           C  
+ATOM     78  CA  HIS A  78     292.600   0.000   0.000  1.00  0.00           C  
+ATOM     79  CA  HIS A  79     296.400   0.000   0.000  1.00  0.00           C  
+ATOM     80  CA  ARG A  80     300.200   0.000   0.000  1.00  0.00           C  
+ATOM     81  CA  ASN A  81     304.000   0.000   0.000  1.00  0.00           C  
+ATOM     82  CA  ILE A  82     307.800   0.000   0.000  1.00  0.00           C  
+ATOM     83  CA  ALA A  83     311.600   0.000   0.000  1.00  0.00           C  
+ATOM     84  CA  THR A  84     315.400   0.000   0.000  1.00  0.00           C  
+ATOM     85  CA  TYR A  85     319.200   0.000   0.000  1.00  0.00           C  
+ATOM     86  CA  TYR A  86     323.000   0.000   0.000  1.00  0.00           C  
+ATOM     87  CA  GLY A  87     326.800   0.000   0.000  1.00  0.00           C  
+ATOM     88  CA  ALA A  88     330.600   0.000   0.000  1.00  0.00           C  
+ATOM     89  CA  PHE A  89     334.400   0.000   0.000  1.00  0.00           C  
+ATOM     90  CA  ILE A  90     338.200   0.000   0.000  1.00  0.00           C  
+ATOM     91  CA  LYS A  91     342.000   0.000   0.000  1.00  0.00           C  
+ATOM     92  CA  LYS A  92     345.800   0.000   0.000  1.00  0.00           C  
+ATOM     93  CA  ASN A  93     349.600   0.000   0.000  1.00  0.00           C  
+ATOM     94  CA  PRO A  94     353.400   0.000   0.000  1.00  0.00           C  
+ATOM     95  CA  PRO A  95     357.200   0.000   0.000  1.00  0.00           C  
+ATOM     96  CA  GLY A  96     361.000   0.000   0.000  1.00  0.00           C  
+ATOM     97  CA  MET A  97     364.800   0.000   0.000  1.00  0.00           C  
+ATOM     98  CA  ASP A  98     368.600   0.000   0.000  1.00  0.00           C  
+ATOM     99  CA  ASP A  99     372.400   0.000   0.000  1.00  0.00           C  
+ATOM    100  CA  GLN A 100     376.200   0.000   0.000  1.00  0.00           C  
+ATOM    101  CA  LEU A 101     380.000   0.000   0.000  1.00  0.00           C  
+ATOM    102  CA  TRP A 102     383.800   0.000   0.000  1.00  0.00           C  
+ATOM    103  CA  LEU A 103     387.600   0.000   0.000  1.00  0.00           C  
+ATOM    104  CA  VAL A 104     391.400   0.000   0.000  1.00  0.00           C  
+ATOM    105  CA  MET A 105     395.200   0.000   0.000  1.00  0.00           C  
+ATOM    106  CA  GLU A 106     399.000   0.000   0.000  1.00  0.00           C  
+ATOM    107  CA  PHE A 107     402.800   0.000   0.000  1.00  0.00           C  
+ATOM    108  CA  CYS A 108     406.600   0.000   0.000  1.00  0.00           C  
+ATOM    109  CA  GLY A 109     410.400   0.000   0.000  1.00  0.00           C  
+ATOM    110  CA  ALA A 110     414.200   0.000   0.000  1.00  0.00           C  
+ATOM    111  CA  GLY A 111     418.000   0.000   0.000  1.00  0.00           C  
+ATOM    112  CA  SER A 112     421.800   0.000   0.000  1.00  0.00           C  
+ATOM    113  CA  VAL A 113     425.600   0.000   0.000  1.00  0.00           C  
+ATOM    114  CA  THR A 114     429.400   0.000   0.000  1.00  0.00           C  
+ATOM    115  CA  ASP A 115     433.200   0.000   0.000  1.00  0.00           C  
+ATOM    116  CA  LEU A 116     437.000   0.000   0.000  1.00  0.00           C  
+ATOM    117  CA  ILE A 117     440.800   0.000   0.000  1.00  0.00           C  
+ATOM    118  CA  LYS A 118     444.600   0.000   0.000  1.00  0.00           C  
+ATOM    119  CA  ASN A 119     448.400   0.000   0.000  1.00  0.00           C  
+ATOM    120  CA  THR A 120     452.200   0.000   0.000  1.00  0.00           C  
+ATOM    121  CA  LYS A 121     456.000   0.000   0.000  1.00  0.00           C  
+ATOM    122  CA  GLY A 122     459.800   0.000   0.000  1.00  0.00           C  
+ATOM    123  CA  ASN A 123     463.600   0.000   0.000  1.00  0.00           C  
+ATOM    124  CA  THR A 124     467.400   0.000   0.000  1.00  0.00           C  
+ATOM    125  CA  LEU A 125     471.200   0.000   0.000  1.00  0.00           C  
+ATOM    126  CA  LYS A 126     475.000   0.000   0.000  1.00  0.00           C  
+ATOM    127  CA  GLU A 127     478.800   0.000   0.000  1.00  0.00           C  
+ATOM    128  CA  GLU A 128     482.600   0.000   0.000  1.00  0.00           C  
+ATOM    129  CA  TRP A 129     486.400   0.000   0.000  1.00  0.00           C  
+ATOM    130  CA  ILE A 130     490.200   0.000   0.000  1.00  0.00           C  
+ATOM    131  CA  ALA A 131     494.000   0.000   0.000  1.00  0.00           C  
+ATOM    132  CA  TYR A 132     497.800   0.000   0.000  1.00  0.00           C  
+ATOM    133  CA  ILE A 133     501.600   0.000   0.000  1.00  0.00           C  
+ATOM    134  CA  CYS A 134     505.400   0.000   0.000  1.00  0.00           C  
+ATOM    135  CA  ARG A 135     509.200   0.000   0.000  1.00  0.00           C  
+ATOM    136  CA  GLU A 136     513.000   0.000   0.000  1.00  0.00           C  
+ATOM    137  CA  ILE A 137     516.800   0.000   0.000  1.00  0.00           C  
+ATOM    138  CA  LEU A 138     520.600   0.000   0.000  1.00  0.00           C  
+ATOM    139  CA  ARG A 139     524.400   0.000   0.000  1.00  0.00           C  
+ATOM    140  CA  GLY A 140     528.200   0.000   0.000  1.00  0.00           C  
+ATOM    141  CA  LEU A 141     532.000   0.000   0.000  1.00  0.00           C  
+ATOM    142  CA  SER A 142     535.800   0.000   0.000  1.00  0.00           C  
+ATOM    143  CA  HIS A 143     539.600   0.000   0.000  1.00  0.00           C  
+ATOM    144  CA  LEU A 144     543.400   0.000   0.000  1.00  0.00           C  
+ATOM    145  CA  HIS A 145     547.200   0.000   0.000  1.00  0.00           C  
+ATOM    146  CA  GLN A 146     551.000   0.000   0.000  1.00  0.00           C  
+ATOM    147  CA  HIS A 147     554.800   0.000   0.000  1.00  0.00           C  
+ATOM    148  CA  LYS A 148     558.600   0.000   0.000  1.00  0.00           C  
+ATOM    149  CA  VAL A 149     562.400   0.000   0.000  1.00  0.00           C  
+ATOM    150  CA  ILE A 150     566.200   0.000   0.000  1.00  0.00           C  
+ATOM    151  CA  HIS A 151     570.000   0.000   0.000  1.00  0.00           C  
+ATOM    152  CA  ARG A 152     573.800   0.000   0.000  1.00  0.00           C  
+ATOM    153  CA  ASP A 153     577.600   0.000   0.000  1.00  0.00           C  
+ATOM    154  CA  ILE A 154     581.400   0.000   0.000  1.00  0.00           C  
+ATOM    155  CA  LYS A 155     585.200   0.000   0.000  1.00  0.00           C  
+ATOM    156  CA  GLY A 156     589.000   0.000   0.000  1.00  0.00           C  
+ATOM    157  CA  GLN A 157     592.800   0.000   0.000  1.00  0.00           C  
+ATOM    158  CA  ASN A 158     596.600   0.000   0.000  1.00  0.00           C  
+ATOM    159  CA  VAL A 159     600.400   0.000   0.000  1.00  0.00           C  
+ATOM    160  CA  LEU A 160     604.200   0.000   0.000  1.00  0.00           C  
+ATOM    161  CA  LEU A 161     608.000   0.000   0.000  1.00  0.00           C  
+ATOM    162  CA  THR A 162     611.800   0.000   0.000  1.00  0.00           C  
+ATOM    163  CA  GLU A 163     615.600   0.000   0.000  1.00  0.00           C  
+ATOM    164  CA  ASN A 164     619.400   0.000   0.000  1.00  0.00           C  
+ATOM    165  CA  ALA A 165     623.200   0.000   0.000  1.00  0.00           C  
+ATOM    166  CA  GLU A 166     627.000   0.000   0.000  1.00  0.00           C  
+ATOM    167  CA  VAL A 167     630.800   0.000   0.000  1.00  0.00           C  
+ATOM    168  CA  LYS A 168     634.600   0.000   0.000  1.00  0.00           C  
+ATOM    169  CA  LEU A 169     638.400   0.000   0.000  1.00  0.00           C  
+ATOM    170  CA  VAL A 170     642.200   0.000   0.000  1.00  0.00           C  
+ATOM    171  CA  ASP A 171     646.000   0.000   0.000  1.00  0.00           C  
+ATOM    172  CA  PHE A 172     649.800   0.000   0.000  1.00  0.00           C  
+ATOM    173  CA  GLY A 173     653.600   0.000   0.000  1.00  0.00           C  
+ATOM    174  CA  VAL A 174     657.400   0.000   0.000  1.00  0.00           C  
+ATOM    175  CA  SER A 175     661.200   0.000   0.000  1.00  0.00           C  
+ATOM    176  CA  ALA A 176     665.000   0.000   0.000  1.00  0.00           C  
+ATOM    177  CA  GLN A 177     668.800   0.000   0.000  1.00  0.00           C  
+ATOM    178  CA  LEU A 178     672.600   0.000   0.000  1.00  0.00           C  
+ATOM    179  CA  ASP A 179     676.400   0.000   0.000  1.00  0.00           C  
+ATOM    180  CA  ARG A 180     680.200   0.000   0.000  1.00  0.00           C  
+ATOM    181  CA  THR A 181     684.000   0.000   0.000  1.00  0.00           C  
+ATOM    182  CA  VAL A 182     687.800   0.000   0.000  1.00  0.00           C  
+ATOM    183  CA  GLY A 183     691.600   0.000   0.000  1.00  0.00           C  
+ATOM    184  CA  ARG A 184     695.400   0.000   0.000  1.00  0.00           C  
+ATOM    185  CA  ARG A 185     699.200   0.000   0.000  1.00  0.00           C  
+ATOM    186  CA  ASN A 186     703.000   0.000   0.000  1.00  0.00           C  
+ATOM    187  CA  THR A 187     706.800   0.000   0.000  1.00  0.00           C  
+ATOM    188  CA  PHE A 188     710.600   0.000   0.000  1.00  0.00           C  
+ATOM    189  CA  ILE A 189     714.400   0.000   0.000  1.00  0.00           C  
+ATOM    190  CA  GLY A 190     718.200   0.000   0.000  1.00  0.00           C  
+ATOM    191  CA  THR A 191     722.000   0.000   0.000  1.00  0.00           C  
+ATOM    192  CA  PRO A 192     725.800   0.000   0.000  1.00  0.00           C  
+ATOM    193  CA  TYR A 193     729.600   0.000   0.000  1.00  0.00           C  
+ATOM    194  CA  TRP A 194     733.400   0.000   0.000  1.00  0.00           C  
+ATOM    195  CA  MET A 195     737.200   0.000   0.000  1.00  0.00           C  
+ATOM    196  CA  ALA A 196     741.000   0.000   0.000  1.00  0.00           C  
+ATOM    197  CA  PRO A 197     744.800   0.000   0.000  1.00  0.00           C  
+ATOM    198  CA  GLU A 198     748.600   0.000   0.000  1.00  0.00           C  
+ATOM    199  CA  VAL A 199     752.400   0.000   0.000  1.00  0.00           C  
+ATOM    200  CA  ILE A 200     756.200   0.000   0.000  1.00  0.00           C  
+ATOM    201  CA  ALA A 201     760.000   0.000   0.000  1.00  0.00           C  
+ATOM    202  CA  CYS A 202     763.800   0.000   0.000  1.00  0.00           C  
+ATOM    203  CA  ASP A 203     767.600   0.000   0.000  1.00  0.00           C  
+ATOM    204  CA  GLU A 204     771.400   0.000   0.000  1.00  0.00           C  
+ATOM    205  CA  ASN A 205     775.200   0.000   0.000  1.00  0.00           C  
+ATOM    206  CA  PRO A 206     779.000   0.000   0.000  1.00  0.00           C  
+ATOM    207  CA  ASP A 207     782.800   0.000   0.000  1.00  0.00           C  
+ATOM    208  CA  ALA A 208     786.600   0.000   0.000  1.00  0.00           C  
+ATOM    209  CA  THR A 209     790.400   0.000   0.000  1.00  0.00           C  
+ATOM    210  CA  TYR A 210     794.200   0.000   0.000  1.00  0.00           C  
+ATOM    211  CA  ASP A 211     798.000   0.000   0.000  1.00  0.00           C  
+ATOM    212  CA  PHE A 212     801.800   0.000   0.000  1.00  0.00           C  
+ATOM    213  CA  LYS A 213     805.600   0.000   0.000  1.00  0.00           C  
+ATOM    214  CA  SER A 214     809.400   0.000   0.000  1.00  0.00           C  
+ATOM    215  CA  ASP A 215     813.200   0.000   0.000  1.00  0.00           C  
+ATOM    216  CA  LEU A 216     817.000   0.000   0.000  1.00  0.00           C  
+ATOM    217  CA  TRP A 217     820.800   0.000   0.000  1.00  0.00           C  
+ATOM    218  CA  SER A 218     824.600   0.000   0.000  1.00  0.00           C  
+ATOM    219  CA  LEU A 219     828.400   0.000   0.000  1.00  0.00           C  
+ATOM    220  CA  GLY A 220     832.200   0.000   0.000  1.00  0.00           C  
+ATOM    221  CA  ILE A 221     836.000   0.000   0.000  1.00  0.00           C  
+ATOM    222  CA  THR A 222     839.800   0.000   0.000  1.00  0.00           C  
+ATOM    223  CA  ALA A 223     843.600   0.000   0.000  1.00  0.00           C  
+ATOM    224  CA  ILE A 224     847.400   0.000   0.000  1.00  0.00           C  
+ATOM    225  CA  GLU A 225     851.200   0.000   0.000  1.00  0.00           C  
+ATOM    226  CA  MET A 226     855.000   0.000   0.000  1.00  0.00           C  
+ATOM    227  CA  ALA A 227     858.800   0.000   0.000  1.00  0.00           C  
+ATOM    228  CA  GLU A 228     862.600   0.000   0.000  1.00  0.00           C  
+ATOM    229  CA  GLY A 229     866.400   0.000   0.000  1.00  0.00           C  
+ATOM    230  CA  ALA A 230     870.200   0.000   0.000  1.00  0.00           C  
+ATOM    231  CA  PRO A 231     874.000   0.000   0.000  1.00  0.00           C  
+ATOM    232  CA  PRO A 232     877.800   0.000   0.000  1.00  0.00           C  
+ATOM    233  CA  LEU A 233     881.600   0.000   0.000  1.00  0.00           C  
+ATOM    234  CA  CYS A 234     885.400   0.000   0.000  1.00  0.00           C  
+ATOM    235  CA  ASP A 235     889.200   0.000   0.000  1.00  0.00           C  
+ATOM    236  CA  MET A 236     893.000   0.000   0.000  1.00  0.00           C  
+ATOM    237  CA  HIS A 237     896.800   0.000   0.000  1.00  0.00           C  
+ATOM    238  CA  PRO A 238     900.600   0.000   0.000  1.00  0.00           C  
+ATOM    239  CA  MET A 239     904.400   0.000   0.000  1.00  0.00           C  
+ATOM    240  CA  ARG A 240     908.200   0.000   0.000  1.00  0.00           C  
+ATOM    241  CA  ALA A 241     912.000   0.000   0.000  1.00  0.00           C  
+ATOM    242  CA  LEU A 242     915.800   0.000   0.000  1.00  0.00           C  
+ATOM    243  CA  PHE A 243     919.600   0.000   0.000  1.00  0.00           C  
+ATOM    244  CA  LEU A 244     923.400   0.000   0.000  1.00  0.00           C  
+ATOM    245  CA  ILE A 245     927.200   0.000   0.000  1.00  0.00           C  
+ATOM    246  CA  PRO A 246     931.000   0.000   0.000  1.00  0.00           C  
+ATOM    247  CA  ARG A 247     934.800   0.000   0.000  1.00  0.00           C  
+ATOM    248  CA  ASN A 248     938.600   0.000   0.000  1.00  0.00           C  
+ATOM    249  CA  PRO A 249     942.400   0.000   0.000  1.00  0.00           C  
+ATOM    250  CA  ALA A 250     946.200   0.000   0.000  1.00  0.00           C  
+ATOM    251  CA  PRO A 251     950.000   0.000   0.000  1.00  0.00           C  
+ATOM    252  CA  ARG A 252     953.800   0.000   0.000  1.00  0.00           C  
+ATOM    253  CA  LEU A 253     957.600   0.000   0.000  1.00  0.00           C  
+ATOM    254  CA  LYS A 254     961.400   0.000   0.000  1.00  0.00           C  
+ATOM    255  CA  SER A 255     965.200   0.000   0.000  1.00  0.00           C  
+ATOM    256  CA  LYS A 256     969.000   0.000   0.000  1.00  0.00           C  
+ATOM    257  CA  LYS A 257     972.800   0.000   0.000  1.00  0.00           C  
+ATOM    258  CA  TRP A 258     976.600   0.000   0.000  1.00  0.00           C  
+ATOM    259  CA  SER A 259     980.400   0.000   0.000  1.00  0.00           C  
+ATOM    260  CA  LYS A 260     984.200   0.000   0.000  1.00  0.00           C  
+ATOM    261  CA  LYS A 261     988.000   0.000   0.000  1.00  0.00           C  
+ATOM    262  CA  PHE A 262     991.800   0.000   0.000  1.00  0.00           C  
+ATOM    263  CA  GLN A 263     995.600   0.000   0.000  1.00  0.00           C  
+ATOM    264  CA  SER A 264     999.400   0.000   0.000  1.00  0.00           C  
+ATOM    265  CA  PHE A 265    1003.200   0.000   0.000  1.00  0.00           C  
+ATOM    266  CA  ILE A 266    1007.000   0.000   0.000  1.00  0.00           C  
+ATOM    267  CA  GLU A 267    1010.800   0.000   0.000  1.00  0.00           C  
+ATOM    268  CA  SER A 268    1014.600   0.000   0.000  1.00  0.00           C  
+ATOM    269  CA  CYS A 269    1018.400   0.000   0.000  1.00  0.00           C  
+ATOM    270  CA  LEU A 270    1022.200   0.000   0.000  1.00  0.00           C  
+ATOM    271  CA  VAL A 271    1026.000   0.000   0.000  1.00  0.00           C  
+ATOM    272  CA  LYS A 272    1029.800   0.000   0.000  1.00  0.00           C  
+ATOM    273  CA  ASN A 273    1033.600   0.000   0.000  1.00  0.00           C  
+ATOM    274  CA  HIS A 274    1037.400   0.000   0.000  1.00  0.00           C  
+ATOM    275  CA  SER A 275    1041.200   0.000   0.000  1.00  0.00           C  
+ATOM    276  CA  GLN A 276    1045.000   0.000   0.000  1.00  0.00           C  
+ATOM    277  CA  ARG A 277    1048.800   0.000   0.000  1.00  0.00           C  
+ATOM    278  CA  PRO A 278    1052.600   0.000   0.000  1.00  0.00           C  
+ATOM    279  CA  ALA A 279    1056.400   0.000   0.000  1.00  0.00           C  
+ATOM    280  CA  THR A 280    1060.200   0.000   0.000  1.00  0.00           C  
+ATOM    281  CA  GLU A 281    1064.000   0.000   0.000  1.00  0.00           C  
+ATOM    282  CA  GLN A 282    1067.800   0.000   0.000  1.00  0.00           C  
+ATOM    283  CA  LEU A 283    1071.600   0.000   0.000  1.00  0.00           C  
+ATOM    284  CA  MET A 284    1075.400   0.000   0.000  1.00  0.00           C  
+ATOM    285  CA  LYS A 285    1079.200   0.000   0.000  1.00  0.00           C  
+ATOM    286  CA  HIS A 286    1083.000   0.000   0.000  1.00  0.00           C  
+ATOM    287  CA  PRO A 287    1086.800   0.000   0.000  1.00  0.00           C  
+ATOM    288  CA  PHE A 288    1090.600   0.000   0.000  1.00  0.00           C  
+ATOM    289  CA  ILE A 289    1094.400   0.000   0.000  1.00  0.00           C  
+ATOM    290  CA  ARG A 290    1098.200   0.000   0.000  1.00  0.00           C  
+ATOM    291  CA  ASP A 291    1102.000   0.000   0.000  1.00  0.00           C  
+ATOM    292  CA  GLN A 292    1105.800   0.000   0.000  1.00  0.00           C  
+ATOM    293  CA  PRO A 293    1109.600   0.000   0.000  1.00  0.00           C  
+ATOM    294  CA  ASN A 294    1113.400   0.000   0.000  1.00  0.00           C  
+ATOM    295  CA  GLU A 295    1117.200   0.000   0.000  1.00  0.00           C  
+ATOM    296  CA  ARG A 296    1121.000   0.000   0.000  1.00  0.00           C  
+ATOM    297  CA  GLN A 297    1124.800   0.000   0.000  1.00  0.00           C  
+ATOM    298  CA  VAL A 298    1128.600   0.000   0.000  1.00  0.00           C  
+ATOM    299  CA  ARG A 299    1132.400   0.000   0.000  1.00  0.00           C  
+ATOM    300  CA  ILE A 300    1136.200   0.000   0.000  1.00  0.00           C  
+ATOM    301  CA  GLN A 301    1140.000   0.000   0.000  1.00  0.00           C  
+ATOM    302  CA  LEU A 302    1143.800   0.000   0.000  1.00  0.00           C  
+ATOM    303  CA  LYS A 303    1147.600   0.000   0.000  1.00  0.00           C  
+ATOM    304  CA  ASP A 304    1151.400   0.000   0.000  1.00  0.00           C  
+ATOM    305  CA  HIS A 305    1155.200   0.000   0.000  1.00  0.00           C  
+ATOM    306  CA  ILE A 306    1159.000   0.000   0.000  1.00  0.00           C  
+ATOM    307  CA  ASP A 307    1162.800   0.000   0.000  1.00  0.00           C  
+ATOM    308  CA  ARG A 308    1166.600   0.000   0.000  1.00  0.00           C  
+ATOM    309  CA  THR A 309    1170.400   0.000   0.000  1.00  0.00           C  
+ATOM    310  CA  LYS A 310    1174.200   0.000   0.000  1.00  0.00           C  
+ATOM    311  CA  LYS A 311    1178.000   0.000   0.000  1.00  0.00           C  
+ATOM    312  CA  LYS A 312    1181.800   0.000   0.000  1.00  0.00           C  
+ATOM    313  CA  ARG A 313    1185.600   0.000   0.000  1.00  0.00           C  
+ATOM    314  CA  GLY A 314    1189.400   0.000   0.000  1.00  0.00           C  
+ATOM    315  CA  GLU A 315    1193.200   0.000   0.000  1.00  0.00           C  
+ATOM    316  CA  LYS A 316    1197.000   0.000   0.000  1.00  0.00           C  
+ATOM    317  CA  ASP A 317    1200.800   0.000   0.000  1.00  0.00           C  
+ATOM    318  CA  GLU A 318    1204.600   0.000   0.000  1.00  0.00           C  
+ATOM    319  CA  THR A 319    1208.400   0.000   0.000  1.00  0.00           C  
+ATOM    320  CA  GLU A 320    1212.200   0.000   0.000  1.00  0.00           C  
+ATOM    321  CA  TYR A 321    1216.000   0.000   0.000  1.00  0.00           C  
+ATOM    322  CA  GLU A 322    1219.800   0.000   0.000  1.00  0.00           C  
+ATOM    323  CA  TYR A 323    1223.600   0.000   0.000  1.00  0.00           C  
+ATOM    324  CA  SER A 324    1227.400   0.000   0.000  1.00  0.00           C  
+ATOM    325  CA  GLY A 325    1231.200   0.000   0.000  1.00  0.00           C  
+ATOM    326  CA  SER A 326    1235.000   0.000   0.000  1.00  0.00           C  
+ATOM    327  CA  GLU A 327    1238.800   0.000   0.000  1.00  0.00           C  
+ATOM    328  CA  GLU A 328    1242.600   0.000   0.000  1.00  0.00           C  
+ATOM    329  CA  GLU A 329    1246.400   0.000   0.000  1.00  0.00           C  
+ATOM    330  CA  GLU A 330    1250.200   0.000   0.000  1.00  0.00           C  
+ATOM    331  CA  GLU A 331    1254.000   0.000   0.000  1.00  0.00           C  
+ATOM    332  CA  GLU A 332    1257.800   0.000   0.000  1.00  0.00           C  
+ATOM    333  CA  ASN A 333    1261.600   0.000   0.000  1.00  0.00           C  
+ATOM    334  CA  ASP A 334    1265.400   0.000   0.000  1.00  0.00           C  
+ATOM    335  CA  SER A 335    1269.200   0.000   0.000  1.00  0.00           C  
+ATOM    336  CA  GLY A 336    1273.000   0.000   0.000  1.00  0.00           C  
+ATOM    337  CA  GLU A 337    1276.800   0.000   0.000  1.00  0.00           C  
+ATOM    338  CA  PRO A 338    1280.600   0.000   0.000  1.00  0.00           C  
+ATOM    339  CA  SER A 339    1284.400   0.000   0.000  1.00  0.00           C  
+ATOM    340  CA  SER A 340    1288.200   0.000   0.000  1.00  0.00           C  
+ATOM    341  CA  ILE A 341    1292.000   0.000   0.000  1.00  0.00           C  
+ATOM    342  CA  LEU A 342    1295.800   0.000   0.000  1.00  0.00           C  
+ATOM    343  CA  ASN A 343    1299.600   0.000   0.000  1.00  0.00           C  
+ATOM    344  CA  LEU A 344    1303.400   0.000   0.000  1.00  0.00           C  
+ATOM    345  CA  PRO A 345    1307.200   0.000   0.000  1.00  0.00           C  
+ATOM    346  CA  GLY A 346    1311.000   0.000   0.000  1.00  0.00           C  
+ATOM    347  CA  GLU A 347    1314.800   0.000   0.000  1.00  0.00           C  
+ATOM    348  CA  SER A 348    1318.600   0.000   0.000  1.00  0.00           C  
+ATOM    349  CA  THR A 349    1322.400   0.000   0.000  1.00  0.00           C  
+ATOM    350  CA  LEU A 350    1326.200   0.000   0.000  1.00  0.00           C  
+ATOM    351  CA  ARG A 351    1330.000   0.000   0.000  1.00  0.00           C  
+ATOM    352  CA  ARG A 352    1333.800   0.000   0.000  1.00  0.00           C  
+ATOM    353  CA  ASP A 353    1337.600   0.000   0.000  1.00  0.00           C  
+ATOM    354  CA  PHE A 354    1341.400   0.000   0.000  1.00  0.00           C  
+ATOM    355  CA  LEU A 355    1345.200   0.000   0.000  1.00  0.00           C  
+ATOM    356  CA  ARG A 356    1349.000   0.000   0.000  1.00  0.00           C  
+ATOM    357  CA  LEU A 357    1352.800   0.000   0.000  1.00  0.00           C  
+ATOM    358  CA  GLN A 358    1356.600   0.000   0.000  1.00  0.00           C  
+ATOM    359  CA  LEU A 359    1360.400   0.000   0.000  1.00  0.00           C  
+ATOM    360  CA  ALA A 360    1364.200   0.000   0.000  1.00  0.00           C  
+ATOM    361  CA  ASN A 361    1368.000   0.000   0.000  1.00  0.00           C  
+ATOM    362  CA  LYS A 362    1371.800   0.000   0.000  1.00  0.00           C  
+ATOM    363  CA  GLU A 363    1375.600   0.000   0.000  1.00  0.00           C  
+ATOM    364  CA  ARG A 364    1379.400   0.000   0.000  1.00  0.00           C  
+ATOM    365  CA  SER A 365    1383.200   0.000   0.000  1.00  0.00           C  
+ATOM    366  CA  GLU A 366    1387.000   0.000   0.000  1.00  0.00           C  
+ATOM    367  CA  ALA A 367    1390.800   0.000   0.000  1.00  0.00           C  
+ATOM    368  CA  LEU A 368    1394.600   0.000   0.000  1.00  0.00           C  
+ATOM    369  CA  ARG A 369    1398.400   0.000   0.000  1.00  0.00           C  
+ATOM    370  CA  ARG A 370    1402.200   0.000   0.000  1.00  0.00           C  
+ATOM    371  CA  GLN A 371    1406.000   0.000   0.000  1.00  0.00           C  
+ATOM    372  CA  GLN A 372    1409.800   0.000   0.000  1.00  0.00           C  
+ATOM    373  CA  LEU A 373    1413.600   0.000   0.000  1.00  0.00           C  
+ATOM    374  CA  GLU A 374    1417.400   0.000   0.000  1.00  0.00           C  
+ATOM    375  CA  GLN A 375    1421.200   0.000   0.000  1.00  0.00           C  
+ATOM    376  CA  GLN A 376    1425.000   0.000   0.000  1.00  0.00           C  
+ATOM    377  CA  GLN A 377    1428.800   0.000   0.000  1.00  0.00           C  
+ATOM    378  CA  ARG A 378    1432.600   0.000   0.000  1.00  0.00           C  
+ATOM    379  CA  GLU A 379    1436.400   0.000   0.000  1.00  0.00           C  
+ATOM    380  CA  ASN A 380    1440.200   0.000   0.000  1.00  0.00           C  
+ATOM    381  CA  GLU A 381    1444.000   0.000   0.000  1.00  0.00           C  
+ATOM    382  CA  GLU A 382    1447.800   0.000   0.000  1.00  0.00           C  
+ATOM    383  CA  HIS A 383    1451.600   0.000   0.000  1.00  0.00           C  
+ATOM    384  CA  LYS A 384    1455.400   0.000   0.000  1.00  0.00           C  
+ATOM    385  CA  ARG A 385    1459.200   0.000   0.000  1.00  0.00           C  
+ATOM    386  CA  GLN A 386    1463.000   0.000   0.000  1.00  0.00           C  
+ATOM    387  CA  LEU A 387    1466.800   0.000   0.000  1.00  0.00           C  
+ATOM    388  CA  LEU A 388    1470.600   0.000   0.000  1.00  0.00           C  
+ATOM    389  CA  ALA A 389    1474.400   0.000   0.000  1.00  0.00           C  
+ATOM    390  CA  GLU A 390    1478.200   0.000   0.000  1.00  0.00           C  
+ATOM    391  CA  ARG A 391    1482.000   0.000   0.000  1.00  0.00           C  
+ATOM    392  CA  GLN A 392    1485.800   0.000   0.000  1.00  0.00           C  
+ATOM    393  CA  LYS A 393    1489.600   0.000   0.000  1.00  0.00           C  
+ATOM    394  CA  ARG A 394    1493.400   0.000   0.000  1.00  0.00           C  
+ATOM    395  CA  ILE A 395    1497.200   0.000   0.000  1.00  0.00           C  
+ATOM    396  CA  GLU A 396    1501.000   0.000   0.000  1.00  0.00           C  
+ATOM    397  CA  GLU A 397    1504.800   0.000   0.000  1.00  0.00           C  
+ATOM    398  CA  GLN A 398    1508.600   0.000   0.000  1.00  0.00           C  
+ATOM    399  CA  LYS A 399    1512.400   0.000   0.000  1.00  0.00           C  
+ATOM    400  CA  GLU A 400    1516.200   0.000   0.000  1.00  0.00           C  
+ATOM    401  CA  GLN A 401    1520.000   0.000   0.000  1.00  0.00           C  
+ATOM    402  CA  ARG A 402    1523.800   0.000   0.000  1.00  0.00           C  
+ATOM    403  CA  ARG A 403    1527.600   0.000   0.000  1.00  0.00           C  
+ATOM    404  CA  ARG A 404    1531.400   0.000   0.000  1.00  0.00           C  
+ATOM    405  CA  LEU A 405    1535.200   0.000   0.000  1.00  0.00           C  
+ATOM    406  CA  GLU A 406    1539.000   0.000   0.000  1.00  0.00           C  
+ATOM    407  CA  GLU A 407    1542.800   0.000   0.000  1.00  0.00           C  
+ATOM    408  CA  GLN A 408    1546.600   0.000   0.000  1.00  0.00           C  
+ATOM    409  CA  GLN A 409    1550.400   0.000   0.000  1.00  0.00           C  
+ATOM    410  CA  ARG A 410    1554.200   0.000   0.000  1.00  0.00           C  
+ATOM    411  CA  ARG A 411    1558.000   0.000   0.000  1.00  0.00           C  
+ATOM    412  CA  GLU A 412    1561.800   0.000   0.000  1.00  0.00           C  
+ATOM    413  CA  LYS A 413    1565.600   0.000   0.000  1.00  0.00           C  
+ATOM    414  CA  GLU A 414    1569.400   0.000   0.000  1.00  0.00           C  
+ATOM    415  CA  LEU A 415    1573.200   0.000   0.000  1.00  0.00           C  
+ATOM    416  CA  ARG A 416    1577.000   0.000   0.000  1.00  0.00           C  
+ATOM    417  CA  LYS A 417    1580.800   0.000   0.000  1.00  0.00           C  
+ATOM    418  CA  GLN A 418    1584.600   0.000   0.000  1.00  0.00           C  
+ATOM    419  CA  GLN A 419    1588.400   0.000   0.000  1.00  0.00           C  
+ATOM    420  CA  GLU A 420    1592.200   0.000   0.000  1.00  0.00           C  
+ATOM    421  CA  ARG A 421    1596.000   0.000   0.000  1.00  0.00           C  
+ATOM    422  CA  GLU A 422    1599.800   0.000   0.000  1.00  0.00           C  
+ATOM    423  CA  GLN A 423    1603.600   0.000   0.000  1.00  0.00           C  
+ATOM    424  CA  ARG A 424    1607.400   0.000   0.000  1.00  0.00           C  
+ATOM    425  CA  ARG A 425    1611.200   0.000   0.000  1.00  0.00           C  
+ATOM    426  CA  HIS A 426    1615.000   0.000   0.000  1.00  0.00           C  
+ATOM    427  CA  TYR A 427    1618.800   0.000   0.000  1.00  0.00           C  
+ATOM    428  CA  GLU A 428    1622.600   0.000   0.000  1.00  0.00           C  
+ATOM    429  CA  GLU A 429    1626.400   0.000   0.000  1.00  0.00           C  
+ATOM    430  CA  GLN A 430    1630.200   0.000   0.000  1.00  0.00           C  
+ATOM    431  CA  MET A 431    1634.000   0.000   0.000  1.00  0.00           C  
+ATOM    432  CA  ARG A 432    1637.800   0.000   0.000  1.00  0.00           C  
+ATOM    433  CA  ARG A 433    1641.600   0.000   0.000  1.00  0.00           C  
+ATOM    434  CA  GLU A 434    1645.400   0.000   0.000  1.00  0.00           C  
+ATOM    435  CA  GLU A 435    1649.200   0.000   0.000  1.00  0.00           C  
+ATOM    436  CA  GLU A 436    1653.000   0.000   0.000  1.00  0.00           C  
+ATOM    437  CA  ARG A 437    1656.800   0.000   0.000  1.00  0.00           C  
+ATOM    438  CA  ARG A 438    1660.600   0.000   0.000  1.00  0.00           C  
+ATOM    439  CA  ARG A 439    1664.400   0.000   0.000  1.00  0.00           C  
+ATOM    440  CA  ALA A 440    1668.200   0.000   0.000  1.00  0.00           C  
+ATOM    441  CA  GLU A 441    1672.000   0.000   0.000  1.00  0.00           C  
+ATOM    442  CA  HIS A 442    1675.800   0.000   0.000  1.00  0.00           C  
+ATOM    443  CA  GLU A 443    1679.600   0.000   0.000  1.00  0.00           C  
+ATOM    444  CA  GLN A 444    1683.400   0.000   0.000  1.00  0.00           C  
+ATOM    445  CA  GLU A 445    1687.200   0.000   0.000  1.00  0.00           C  
+ATOM    446  CA  TYR A 446    1691.000   0.000   0.000  1.00  0.00           C  
+ATOM    447  CA  ILE A 447    1694.800   0.000   0.000  1.00  0.00           C  
+ATOM    448  CA  ARG A 448    1698.600   0.000   0.000  1.00  0.00           C  
+ATOM    449  CA  ARG A 449    1702.400   0.000   0.000  1.00  0.00           C  
+ATOM    450  CA  GLN A 450    1706.200   0.000   0.000  1.00  0.00           C  
+ATOM    451  CA  LEU A 451    1710.000   0.000   0.000  1.00  0.00           C  
+ATOM    452  CA  GLU A 452    1713.800   0.000   0.000  1.00  0.00           C  
+ATOM    453  CA  GLU A 453    1717.600   0.000   0.000  1.00  0.00           C  
+ATOM    454  CA  GLU A 454    1721.400   0.000   0.000  1.00  0.00           C  
+ATOM    455  CA  GLN A 455    1725.200   0.000   0.000  1.00  0.00           C  
+ATOM    456  CA  ARG A 456    1729.000   0.000   0.000  1.00  0.00           C  
+ATOM    457  CA  GLN A 457    1732.800   0.000   0.000  1.00  0.00           C  
+ATOM    458  CA  LEU A 458    1736.600   0.000   0.000  1.00  0.00           C  
+ATOM    459  CA  GLU A 459    1740.400   0.000   0.000  1.00  0.00           C  
+ATOM    460  CA  ILE A 460    1744.200   0.000   0.000  1.00  0.00           C  
+ATOM    461  CA  LEU A 461    1748.000   0.000   0.000  1.00  0.00           C  
+ATOM    462  CA  GLN A 462    1751.800   0.000   0.000  1.00  0.00           C  
+ATOM    463  CA  GLN A 463    1755.600   0.000   0.000  1.00  0.00           C  
+ATOM    464  CA  GLN A 464    1759.400   0.000   0.000  1.00  0.00           C  
+ATOM    465  CA  LEU A 465    1763.200   0.000   0.000  1.00  0.00           C  
+ATOM    466  CA  LEU A 466    1767.000   0.000   0.000  1.00  0.00           C  
+ATOM    467  CA  HIS A 467    1770.800   0.000   0.000  1.00  0.00           C  
+ATOM    468  CA  GLU A 468    1774.600   0.000   0.000  1.00  0.00           C  
+ATOM    469  CA  GLN A 469    1778.400   0.000   0.000  1.00  0.00           C  
+ATOM    470  CA  ALA A 470    1782.200   0.000   0.000  1.00  0.00           C  
+ATOM    471  CA  LEU A 471    1786.000   0.000   0.000  1.00  0.00           C  
+ATOM    472  CA  LEU A 472    1789.800   0.000   0.000  1.00  0.00           C  
+ATOM    473  CA  LEU A 473    1793.600   0.000   0.000  1.00  0.00           C  
+ATOM    474  CA  GLU A 474    1797.400   0.000   0.000  1.00  0.00           C  
+ATOM    475  CA  TYR A 475    1801.200   0.000   0.000  1.00  0.00           C  
+ATOM    476  CA  LYS A 476    1805.000   0.000   0.000  1.00  0.00           C  
+ATOM    477  CA  ARG A 477    1808.800   0.000   0.000  1.00  0.00           C  
+ATOM    478  CA  LYS A 478    1812.600   0.000   0.000  1.00  0.00           C  
+ATOM    479  CA  GLN A 479    1816.400   0.000   0.000  1.00  0.00           C  
+ATOM    480  CA  LEU A 480    1820.200   0.000   0.000  1.00  0.00           C  
+ATOM    481  CA  GLU A 481    1824.000   0.000   0.000  1.00  0.00           C  
+ATOM    482  CA  GLU A 482    1827.800   0.000   0.000  1.00  0.00           C  
+ATOM    483  CA  GLN A 483    1831.600   0.000   0.000  1.00  0.00           C  
+ATOM    484  CA  ARG A 484    1835.400   0.000   0.000  1.00  0.00           C  
+ATOM    485  CA  GLN A 485    1839.200   0.000   0.000  1.00  0.00           C  
+ATOM    486  CA  ALA A 486    1843.000   0.000   0.000  1.00  0.00           C  
+ATOM    487  CA  GLU A 487    1846.800   0.000   0.000  1.00  0.00           C  
+ATOM    488  CA  ARG A 488    1850.600   0.000   0.000  1.00  0.00           C  
+ATOM    489  CA  LEU A 489    1854.400   0.000   0.000  1.00  0.00           C  
+ATOM    490  CA  GLN A 490    1858.200   0.000   0.000  1.00  0.00           C  
+ATOM    491  CA  ARG A 491    1862.000   0.000   0.000  1.00  0.00           C  
+ATOM    492  CA  GLN A 492    1865.800   0.000   0.000  1.00  0.00           C  
+ATOM    493  CA  LEU A 493    1869.600   0.000   0.000  1.00  0.00           C  
+ATOM    494  CA  LYS A 494    1873.400   0.000   0.000  1.00  0.00           C  
+ATOM    495  CA  GLN A 495    1877.200   0.000   0.000  1.00  0.00           C  
+ATOM    496  CA  GLU A 496    1881.000   0.000   0.000  1.00  0.00           C  
+ATOM    497  CA  ARG A 497    1884.800   0.000   0.000  1.00  0.00           C  
+ATOM    498  CA  ASP A 498    1888.600   0.000   0.000  1.00  0.00           C  
+ATOM    499  CA  TYR A 499    1892.400   0.000   0.000  1.00  0.00           C  
+ATOM    500  CA  LEU A 500    1896.200   0.000   0.000  1.00  0.00           C  
+ATOM    501  CA  VAL A 501    1900.000   0.000   0.000  1.00  0.00           C  
+ATOM    502  CA  SER A 502    1903.800   0.000   0.000  1.00  0.00           C  
+ATOM    503  CA  LEU A 503    1907.600   0.000   0.000  1.00  0.00           C  
+ATOM    504  CA  GLN A 504    1911.400   0.000   0.000  1.00  0.00           C  
+ATOM    505  CA  HIS A 505    1915.200   0.000   0.000  1.00  0.00           C  
+ATOM    506  CA  GLN A 506    1919.000   0.000   0.000  1.00  0.00           C  
+ATOM    507  CA  ARG A 507    1922.800   0.000   0.000  1.00  0.00           C  
+ATOM    508  CA  GLN A 508    1926.600   0.000   0.000  1.00  0.00           C  
+ATOM    509  CA  GLU A 509    1930.400   0.000   0.000  1.00  0.00           C  
+ATOM    510  CA  GLN A 510    1934.200   0.000   0.000  1.00  0.00           C  
+ATOM    511  CA  ARG A 511    1938.000   0.000   0.000  1.00  0.00           C  
+ATOM    512  CA  PRO A 512    1941.800   0.000   0.000  1.00  0.00           C  
+ATOM    513  CA  VAL A 513    1945.600   0.000   0.000  1.00  0.00           C  
+ATOM    514  CA  GLU A 514    1949.400   0.000   0.000  1.00  0.00           C  
+ATOM    515  CA  LYS A 515    1953.200   0.000   0.000  1.00  0.00           C  
+ATOM    516  CA  LYS A 516    1957.000   0.000   0.000  1.00  0.00           C  
+ATOM    517  CA  PRO A 517    1960.800   0.000   0.000  1.00  0.00           C  
+ATOM    518  CA  LEU A 518    1964.600   0.000   0.000  1.00  0.00           C  
+ATOM    519  CA  TYR A 519    1968.400   0.000   0.000  1.00  0.00           C  
+ATOM    520  CA  HIS A 520    1972.200   0.000   0.000  1.00  0.00           C  
+ATOM    521  CA  TYR A 521    1976.000   0.000   0.000  1.00  0.00           C  
+ATOM    522  CA  LYS A 522    1979.800   0.000   0.000  1.00  0.00           C  
+ATOM    523  CA  GLU A 523    1983.600   0.000   0.000  1.00  0.00           C  
+ATOM    524  CA  GLY A 524    1987.400   0.000   0.000  1.00  0.00           C  
+ATOM    525  CA  MET A 525    1991.200   0.000   0.000  1.00  0.00           C  
+ATOM    526  CA  SER A 526    1995.000   0.000   0.000  1.00  0.00           C  
+ATOM    527  CA  PRO A 527    1998.800   0.000   0.000  1.00  0.00           C  
+ATOM    528  CA  SER A 528    2002.600   0.000   0.000  1.00  0.00           C  
+ATOM    529  CA  GLU A 529    2006.400   0.000   0.000  1.00  0.00           C  
+ATOM    530  CA  LYS A 530    2010.200   0.000   0.000  1.00  0.00           C  
+ATOM    531  CA  PRO A 531    2014.000   0.000   0.000  1.00  0.00           C  
+ATOM    532  CA  ALA A 532    2017.800   0.000   0.000  1.00  0.00           C  
+ATOM    533  CA  TRP A 533    2021.600   0.000   0.000  1.00  0.00           C  
+ATOM    534  CA  ALA A 534    2025.400   0.000   0.000  1.00  0.00           C  
+ATOM    535  CA  LYS A 535    2029.200   0.000   0.000  1.00  0.00           C  
+ATOM    536  CA  GLU A 536    2033.000   0.000   0.000  1.00  0.00           C  
+ATOM    537  CA  VAL A 537    2036.800   0.000   0.000  1.00  0.00           C  
+ATOM    538  CA  GLU A 538    2040.600   0.000   0.000  1.00  0.00           C  
+ATOM    539  CA  GLU A 539    2044.400   0.000   0.000  1.00  0.00           C  
+ATOM    540  CA  ARG A 540    2048.200   0.000   0.000  1.00  0.00           C  
+ATOM    541  CA  SER A 541    2052.000   0.000   0.000  1.00  0.00           C  
+ATOM    542  CA  ARG A 542    2055.800   0.000   0.000  1.00  0.00           C  
+ATOM    543  CA  LEU A 543    2059.600   0.000   0.000  1.00  0.00           C  
+ATOM    544  CA  ASN A 544    2063.400   0.000   0.000  1.00  0.00           C  
+ATOM    545  CA  ARG A 545    2067.200   0.000   0.000  1.00  0.00           C  
+ATOM    546  CA  GLN A 546    2071.000   0.000   0.000  1.00  0.00           C  
+ATOM    547  CA  SER A 547    2074.800   0.000   0.000  1.00  0.00           C  
+ATOM    548  CA  SER A 548    2078.600   0.000   0.000  1.00  0.00           C  
+ATOM    549  CA  PRO A 549    2082.400   0.000   0.000  1.00  0.00           C  
+ATOM    550  CA  ALA A 550    2086.200   0.000   0.000  1.00  0.00           C  
+ATOM    551  CA  MET A 551    2090.000   0.000   0.000  1.00  0.00           C  
+ATOM    552  CA  PRO A 552    2093.800   0.000   0.000  1.00  0.00           C  
+ATOM    553  CA  HIS A 553    2097.600   0.000   0.000  1.00  0.00           C  
+ATOM    554  CA  LYS A 554    2101.400   0.000   0.000  1.00  0.00           C  
+ATOM    555  CA  VAL A 555    2105.200   0.000   0.000  1.00  0.00           C  
+ATOM    556  CA  ALA A 556    2109.000   0.000   0.000  1.00  0.00           C  
+ATOM    557  CA  ASN A 557    2112.800   0.000   0.000  1.00  0.00           C  
+ATOM    558  CA  ARG A 558    2116.600   0.000   0.000  1.00  0.00           C  
+ATOM    559  CA  ILE A 559    2120.400   0.000   0.000  1.00  0.00           C  
+ATOM    560  CA  SER A 560    2124.200   0.000   0.000  1.00  0.00           C  
+ATOM    561  CA  ASP A 561    2128.000   0.000   0.000  1.00  0.00           C  
+ATOM    562  CA  PRO A 562    2131.800   0.000   0.000  1.00  0.00           C  
+ATOM    563  CA  ASN A 563    2135.600   0.000   0.000  1.00  0.00           C  
+ATOM    564  CA  LEU A 564    2139.400   0.000   0.000  1.00  0.00           C  
+ATOM    565  CA  PRO A 565    2143.200   0.000   0.000  1.00  0.00           C  
+ATOM    566  CA  PRO A 566    2147.000   0.000   0.000  1.00  0.00           C  
+ATOM    567  CA  ARG A 567    2150.800   0.000   0.000  1.00  0.00           C  
+ATOM    568  CA  SER A 568    2154.600   0.000   0.000  1.00  0.00           C  
+ATOM    569  CA  GLU A 569    2158.400   0.000   0.000  1.00  0.00           C  
+ATOM    570  CA  SER A 570    2162.200   0.000   0.000  1.00  0.00           C  
+ATOM    571  CA  PHE A 571    2166.000   0.000   0.000  1.00  0.00           C  
+ATOM    572  CA  SER A 572    2169.800   0.000   0.000  1.00  0.00           C  
+ATOM    573  CA  ILE A 573    2173.600   0.000   0.000  1.00  0.00           C  
+ATOM    574  CA  SER A 574    2177.400   0.000   0.000  1.00  0.00           C  
+ATOM    575  CA  GLY A 575    2181.200   0.000   0.000  1.00  0.00           C  
+ATOM    576  CA  VAL A 576    2185.000   0.000   0.000  1.00  0.00           C  
+ATOM    577  CA  GLN A 577    2188.800   0.000   0.000  1.00  0.00           C  
+ATOM    578  CA  PRO A 578    2192.600   0.000   0.000  1.00  0.00           C  
+ATOM    579  CA  ALA A 579    2196.400   0.000   0.000  1.00  0.00           C  
+ATOM    580  CA  ARG A 580    2200.200   0.000   0.000  1.00  0.00           C  
+ATOM    581  CA  THR A 581    2204.000   0.000   0.000  1.00  0.00           C  
+ATOM    582  CA  PRO A 582    2207.800   0.000   0.000  1.00  0.00           C  
+ATOM    583  CA  PRO A 583    2211.600   0.000   0.000  1.00  0.00           C  
+ATOM    584  CA  MET A 584    2215.400   0.000   0.000  1.00  0.00           C  
+ATOM    585  CA  LEU A 585    2219.200   0.000   0.000  1.00  0.00           C  
+ATOM    586  CA  ARG A 586    2223.000   0.000   0.000  1.00  0.00           C  
+ATOM    587  CA  PRO A 587    2226.800   0.000   0.000  1.00  0.00           C  
+ATOM    588  CA  VAL A 588    2230.600   0.000   0.000  1.00  0.00           C  
+ATOM    589  CA  ASP A 589    2234.400   0.000   0.000  1.00  0.00           C  
+ATOM    590  CA  PRO A 590    2238.200   0.000   0.000  1.00  0.00           C  
+ATOM    591  CA  GLN A 591    2242.000   0.000   0.000  1.00  0.00           C  
+ATOM    592  CA  ILE A 592    2245.800   0.000   0.000  1.00  0.00           C  
+ATOM    593  CA  PRO A 593    2249.600   0.000   0.000  1.00  0.00           C  
+ATOM    594  CA  HIS A 594    2253.400   0.000   0.000  1.00  0.00           C  
+ATOM    595  CA  LEU A 595    2257.200   0.000   0.000  1.00  0.00           C  
+ATOM    596  CA  VAL A 596    2261.000   0.000   0.000  1.00  0.00           C  
+ATOM    597  CA  ALA A 597    2264.800   0.000   0.000  1.00  0.00           C  
+ATOM    598  CA  VAL A 598    2268.600   0.000   0.000  1.00  0.00           C  
+ATOM    599  CA  LYS A 599    2272.400   0.000   0.000  1.00  0.00           C  
+ATOM    600  CA  SER A 600    2276.200   0.000   0.000  1.00  0.00           C  
+ATOM    601  CA  GLN A 601    2280.000   0.000   0.000  1.00  0.00           C  
+ATOM    602  CA  GLY A 602    2283.800   0.000   0.000  1.00  0.00           C  
+ATOM    603  CA  PRO A 603    2287.600   0.000   0.000  1.00  0.00           C  
+ATOM    604  CA  ALA A 604    2291.400   0.000   0.000  1.00  0.00           C  
+ATOM    605  CA  LEU A 605    2295.200   0.000   0.000  1.00  0.00           C  
+ATOM    606  CA  THR A 606    2299.000   0.000   0.000  1.00  0.00           C  
+ATOM    607  CA  ALA A 607    2302.800   0.000   0.000  1.00  0.00           C  
+ATOM    608  CA  SER A 608    2306.600   0.000   0.000  1.00  0.00           C  
+ATOM    609  CA  GLN A 609    2310.400   0.000   0.000  1.00  0.00           C  
+ATOM    610  CA  SER A 610    2314.200   0.000   0.000  1.00  0.00           C  
+ATOM    611  CA  VAL A 611    2318.000   0.000   0.000  1.00  0.00           C  
+ATOM    612  CA  HIS A 612    2321.800   0.000   0.000  1.00  0.00           C  
+ATOM    613  CA  GLU A 613    2325.600   0.000   0.000  1.00  0.00           C  
+ATOM    614  CA  GLN A 614    2329.400   0.000   0.000  1.00  0.00           C  
+ATOM    615  CA  PRO A 615    2333.200   0.000   0.000  1.00  0.00           C  
+ATOM    616  CA  THR A 616    2337.000   0.000   0.000  1.00  0.00           C  
+ATOM    617  CA  LYS A 617    2340.800   0.000   0.000  1.00  0.00           C  
+ATOM    618  CA  GLY A 618    2344.600   0.000   0.000  1.00  0.00           C  
+ATOM    619  CA  LEU A 619    2348.400   0.000   0.000  1.00  0.00           C  
+ATOM    620  CA  SER A 620    2352.200   0.000   0.000  1.00  0.00           C  
+ATOM    621  CA  GLY A 621    2356.000   0.000   0.000  1.00  0.00           C  
+ATOM    622  CA  PHE A 622    2359.800   0.000   0.000  1.00  0.00           C  
+ATOM    623  CA  GLN A 623    2363.600   0.000   0.000  1.00  0.00           C  
+ATOM    624  CA  GLU A 624    2367.400   0.000   0.000  1.00  0.00           C  
+ATOM    625  CA  ALA A 625    2371.200   0.000   0.000  1.00  0.00           C  
+ATOM    626  CA  LEU A 626    2375.000   0.000   0.000  1.00  0.00           C  
+ATOM    627  CA  ASN A 627    2378.800   0.000   0.000  1.00  0.00           C  
+ATOM    628  CA  VAL A 628    2382.600   0.000   0.000  1.00  0.00           C  
+ATOM    629  CA  THR A 629    2386.400   0.000   0.000  1.00  0.00           C  
+ATOM    630  CA  SER A 630    2390.200   0.000   0.000  1.00  0.00           C  
+ATOM    631  CA  HIS A 631    2394.000   0.000   0.000  1.00  0.00           C  
+ATOM    632  CA  ARG A 632    2397.800   0.000   0.000  1.00  0.00           C  
+ATOM    633  CA  VAL A 633    2401.600   0.000   0.000  1.00  0.00           C  
+ATOM    634  CA  GLU A 634    2405.400   0.000   0.000  1.00  0.00           C  
+ATOM    635  CA  MET A 635    2409.200   0.000   0.000  1.00  0.00           C  
+ATOM    636  CA  PRO A 636    2413.000   0.000   0.000  1.00  0.00           C  
+ATOM    637  CA  ARG A 637    2416.800   0.000   0.000  1.00  0.00           C  
+ATOM    638  CA  GLN A 638    2420.600   0.000   0.000  1.00  0.00           C  
+ATOM    639  CA  ASN A 639    2424.400   0.000   0.000  1.00  0.00           C  
+ATOM    640  CA  SER A 640    2428.200   0.000   0.000  1.00  0.00           C  
+ATOM    641  CA  ASP A 641    2432.000   0.000   0.000  1.00  0.00           C  
+ATOM    642  CA  PRO A 642    2435.800   0.000   0.000  1.00  0.00           C  
+ATOM    643  CA  THR A 643    2439.600   0.000   0.000  1.00  0.00           C  
+ATOM    644  CA  SER A 644    2443.400   0.000   0.000  1.00  0.00           C  
+ATOM    645  CA  GLU A 645    2447.200   0.000   0.000  1.00  0.00           C  
+ATOM    646  CA  ASN A 646    2451.000   0.000   0.000  1.00  0.00           C  
+ATOM    647  CA  PRO A 647    2454.800   0.000   0.000  1.00  0.00           C  
+ATOM    648  CA  PRO A 648    2458.600   0.000   0.000  1.00  0.00           C  
+ATOM    649  CA  LEU A 649    2462.400   0.000   0.000  1.00  0.00           C  
+ATOM    650  CA  PRO A 650    2466.200   0.000   0.000  1.00  0.00           C  
+ATOM    651  CA  THR A 651    2470.000   0.000   0.000  1.00  0.00           C  
+ATOM    652  CA  ARG A 652    2473.800   0.000   0.000  1.00  0.00           C  
+ATOM    653  CA  ILE A 653    2477.600   0.000   0.000  1.00  0.00           C  
+ATOM    654  CA  GLU A 654    2481.400   0.000   0.000  1.00  0.00           C  
+ATOM    655  CA  LYS A 655    2485.200   0.000   0.000  1.00  0.00           C  
+ATOM    656  CA  PHE A 656    2489.000   0.000   0.000  1.00  0.00           C  
+ATOM    657  CA  ASP A 657    2492.800   0.000   0.000  1.00  0.00           C  
+ATOM    658  CA  ARG A 658    2496.600   0.000   0.000  1.00  0.00           C  
+ATOM    659  CA  SER A 659    2500.400   0.000   0.000  1.00  0.00           C  
+ATOM    660  CA  SER A 660    2504.200   0.000   0.000  1.00  0.00           C  
+ATOM    661  CA  TRP A 661    2508.000   0.000   0.000  1.00  0.00           C  
+ATOM    662  CA  LEU A 662    2511.800   0.000   0.000  1.00  0.00           C  
+ATOM    663  CA  ARG A 663    2515.600   0.000   0.000  1.00  0.00           C  
+ATOM    664  CA  GLN A 664    2519.400   0.000   0.000  1.00  0.00           C  
+ATOM    665  CA  GLU A 665    2523.200   0.000   0.000  1.00  0.00           C  
+ATOM    666  CA  GLU A 666    2527.000   0.000   0.000  1.00  0.00           C  
+ATOM    667  CA  ASP A 667    2530.800   0.000   0.000  1.00  0.00           C  
+ATOM    668  CA  ILE A 668    2534.600   0.000   0.000  1.00  0.00           C  
+ATOM    669  CA  PRO A 669    2538.400   0.000   0.000  1.00  0.00           C  
+ATOM    670  CA  PRO A 670    2542.200   0.000   0.000  1.00  0.00           C  
+ATOM    671  CA  LYS A 671    2546.000   0.000   0.000  1.00  0.00           C  
+ATOM    672  CA  VAL A 672    2549.800   0.000   0.000  1.00  0.00           C  
+ATOM    673  CA  PRO A 673    2553.600   0.000   0.000  1.00  0.00           C  
+ATOM    674  CA  GLN A 674    2557.400   0.000   0.000  1.00  0.00           C  
+ATOM    675  CA  ARG A 675    2561.200   0.000   0.000  1.00  0.00           C  
+ATOM    676  CA  THR A 676    2565.000   0.000   0.000  1.00  0.00           C  
+ATOM    677  CA  THR A 677    2568.800   0.000   0.000  1.00  0.00           C  
+ATOM    678  CA  SER A 678    2572.600   0.000   0.000  1.00  0.00           C  
+ATOM    679  CA  ILE A 679    2576.400   0.000   0.000  1.00  0.00           C  
+ATOM    680  CA  SER A 680    2580.200   0.000   0.000  1.00  0.00           C  
+ATOM    681  CA  PRO A 681    2584.000   0.000   0.000  1.00  0.00           C  
+ATOM    682  CA  ALA A 682    2587.800   0.000   0.000  1.00  0.00           C  
+ATOM    683  CA  LEU A 683    2591.600   0.000   0.000  1.00  0.00           C  
+ATOM    684  CA  ALA A 684    2595.400   0.000   0.000  1.00  0.00           C  
+ATOM    685  CA  ARG A 685    2599.200   0.000   0.000  1.00  0.00           C  
+ATOM    686  CA  LYS A 686    2603.000   0.000   0.000  1.00  0.00           C  
+ATOM    687  CA  ASN A 687    2606.800   0.000   0.000  1.00  0.00           C  
+ATOM    688  CA  SER A 688    2610.600   0.000   0.000  1.00  0.00           C  
+ATOM    689  CA  PRO A 689    2614.400   0.000   0.000  1.00  0.00           C  
+ATOM    690  CA  GLY A 690    2618.200   0.000   0.000  1.00  0.00           C  
+ATOM    691  CA  ASN A 691    2622.000   0.000   0.000  1.00  0.00           C  
+ATOM    692  CA  GLY A 692    2625.800   0.000   0.000  1.00  0.00           C  
+ATOM    693  CA  SER A 693    2629.600   0.000   0.000  1.00  0.00           C  
+ATOM    694  CA  ALA A 694    2633.400   0.000   0.000  1.00  0.00           C  
+ATOM    695  CA  LEU A 695    2637.200   0.000   0.000  1.00  0.00           C  
+ATOM    696  CA  GLY A 696    2641.000   0.000   0.000  1.00  0.00           C  
+ATOM    697  CA  PRO A 697    2644.800   0.000   0.000  1.00  0.00           C  
+ATOM    698  CA  ARG A 698    2648.600   0.000   0.000  1.00  0.00           C  
+ATOM    699  CA  LEU A 699    2652.400   0.000   0.000  1.00  0.00           C  
+ATOM    700  CA  GLY A 700    2656.200   0.000   0.000  1.00  0.00           C  
+ATOM    701  CA  SER A 701    2660.000   0.000   0.000  1.00  0.00           C  
+ATOM    702  CA  GLN A 702    2663.800   0.000   0.000  1.00  0.00           C  
+ATOM    703  CA  PRO A 703    2667.600   0.000   0.000  1.00  0.00           C  
+ATOM    704  CA  ILE A 704    2671.400   0.000   0.000  1.00  0.00           C  
+ATOM    705  CA  ARG A 705    2675.200   0.000   0.000  1.00  0.00           C  
+ATOM    706  CA  ALA A 706    2679.000   0.000   0.000  1.00  0.00           C  
+ATOM    707  CA  SER A 707    2682.800   0.000   0.000  1.00  0.00           C  
+ATOM    708  CA  ASN A 708    2686.600   0.000   0.000  1.00  0.00           C  
+ATOM    709  CA  PRO A 709    2690.400   0.000   0.000  1.00  0.00           C  
+ATOM    710  CA  ASP A 710    2694.200   0.000   0.000  1.00  0.00           C  
+ATOM    711  CA  LEU A 711    2698.000   0.000   0.000  1.00  0.00           C  
+ATOM    712  CA  ARG A 712    2701.800   0.000   0.000  1.00  0.00           C  
+ATOM    713  CA  ARG A 713    2705.600   0.000   0.000  1.00  0.00           C  
+ATOM    714  CA  THR A 714    2709.400   0.000   0.000  1.00  0.00           C  
+ATOM    715  CA  GLU A 715    2713.200   0.000   0.000  1.00  0.00           C  
+ATOM    716  CA  PRO A 716    2717.000   0.000   0.000  1.00  0.00           C  
+ATOM    717  CA  ILE A 717    2720.800   0.000   0.000  1.00  0.00           C  
+ATOM    718  CA  LEU A 718    2724.600   0.000   0.000  1.00  0.00           C  
+ATOM    719  CA  GLU A 719    2728.400   0.000   0.000  1.00  0.00           C  
+ATOM    720  CA  SER A 720    2732.200   0.000   0.000  1.00  0.00           C  
+ATOM    721  CA  PRO A 721    2736.000   0.000   0.000  1.00  0.00           C  
+ATOM    722  CA  LEU A 722    2739.800   0.000   0.000  1.00  0.00           C  
+ATOM    723  CA  GLN A 723    2743.600   0.000   0.000  1.00  0.00           C  
+ATOM    724  CA  ARG A 724    2747.400   0.000   0.000  1.00  0.00           C  
+ATOM    725  CA  THR A 725    2751.200   0.000   0.000  1.00  0.00           C  
+ATOM    726  CA  SER A 726    2755.000   0.000   0.000  1.00  0.00           C  
+ATOM    727  CA  SER A 727    2758.800   0.000   0.000  1.00  0.00           C  
+ATOM    728  CA  GLY A 728    2762.600   0.000   0.000  1.00  0.00           C  
+ATOM    729  CA  SER A 729    2766.400   0.000   0.000  1.00  0.00           C  
+ATOM    730  CA  SER A 730    2770.200   0.000   0.000  1.00  0.00           C  
+ATOM    731  CA  SER A 731    2774.000   0.000   0.000  1.00  0.00           C  
+ATOM    732  CA  SER A 732    2777.800   0.000   0.000  1.00  0.00           C  
+ATOM    733  CA  SER A 733    2781.600   0.000   0.000  1.00  0.00           C  
+ATOM    734  CA  SER A 734    2785.400   0.000   0.000  1.00  0.00           C  
+ATOM    735  CA  THR A 735    2789.200   0.000   0.000  1.00  0.00           C  
+ATOM    736  CA  PRO A 736    2793.000   0.000   0.000  1.00  0.00           C  
+ATOM    737  CA  SER A 737    2796.800   0.000   0.000  1.00  0.00           C  
+ATOM    738  CA  SER A 738    2800.600   0.000   0.000  1.00  0.00           C  
+ATOM    739  CA  GLN A 739    2804.400   0.000   0.000  1.00  0.00           C  
+ATOM    740  CA  PRO A 740    2808.200   0.000   0.000  1.00  0.00           C  
+ATOM    741  CA  SER A 741    2812.000   0.000   0.000  1.00  0.00           C  
+ATOM    742  CA  SER A 742    2815.800   0.000   0.000  1.00  0.00           C  
+ATOM    743  CA  GLN A 743    2819.600   0.000   0.000  1.00  0.00           C  
+ATOM    744  CA  GLY A 744    2823.400   0.000   0.000  1.00  0.00           C  
+ATOM    745  CA  GLY A 745    2827.200   0.000   0.000  1.00  0.00           C  
+ATOM    746  CA  SER A 746    2831.000   0.000   0.000  1.00  0.00           C  
+ATOM    747  CA  GLN A 747    2834.800   0.000   0.000  1.00  0.00           C  
+ATOM    748  CA  PRO A 748    2838.600   0.000   0.000  1.00  0.00           C  
+ATOM    749  CA  GLY A 749    2842.400   0.000   0.000  1.00  0.00           C  
+ATOM    750  CA  SER A 750    2846.200   0.000   0.000  1.00  0.00           C  
+ATOM    751  CA  GLN A 751    2850.000   0.000   0.000  1.00  0.00           C  
+ATOM    752  CA  ALA A 752    2853.800   0.000   0.000  1.00  0.00           C  
+ATOM    753  CA  GLY A 753    2857.600   0.000   0.000  1.00  0.00           C  
+ATOM    754  CA  SER A 754    2861.400   0.000   0.000  1.00  0.00           C  
+ATOM    755  CA  SER A 755    2865.200   0.000   0.000  1.00  0.00           C  
+ATOM    756  CA  GLU A 756    2869.000   0.000   0.000  1.00  0.00           C  
+ATOM    757  CA  ARG A 757    2872.800   0.000   0.000  1.00  0.00           C  
+ATOM    758  CA  THR A 758    2876.600   0.000   0.000  1.00  0.00           C  
+ATOM    759  CA  ARG A 759    2880.400   0.000   0.000  1.00  0.00           C  
+ATOM    760  CA  VAL A 760    2884.200   0.000   0.000  1.00  0.00           C  
+ATOM    761  CA  ARG A 761    2888.000   0.000   0.000  1.00  0.00           C  
+ATOM    762  CA  ALA A 762    2891.800   0.000   0.000  1.00  0.00           C  
+ATOM    763  CA  ASN A 763    2895.600   0.000   0.000  1.00  0.00           C  
+ATOM    764  CA  SER A 764    2899.400   0.000   0.000  1.00  0.00           C  
+ATOM    765  CA  LYS A 765    2903.200   0.000   0.000  1.00  0.00           C  
+ATOM    766  CA  SER A 766    2907.000   0.000   0.000  1.00  0.00           C  
+ATOM    767  CA  GLU A 767    2910.800   0.000   0.000  1.00  0.00           C  
+ATOM    768  CA  GLY A 768    2914.600   0.000   0.000  1.00  0.00           C  
+ATOM    769  CA  SER A 769    2918.400   0.000   0.000  1.00  0.00           C  
+ATOM    770  CA  PRO A 770    2922.200   0.000   0.000  1.00  0.00           C  
+ATOM    771  CA  VAL A 771    2926.000   0.000   0.000  1.00  0.00           C  
+ATOM    772  CA  LEU A 772    2929.800   0.000   0.000  1.00  0.00           C  
+ATOM    773  CA  PRO A 773    2933.600   0.000   0.000  1.00  0.00           C  
+ATOM    774  CA  HIS A 774    2937.400   0.000   0.000  1.00  0.00           C  
+ATOM    775  CA  GLU A 775    2941.200   0.000   0.000  1.00  0.00           C  
+ATOM    776  CA  PRO A 776    2945.000   0.000   0.000  1.00  0.00           C  
+ATOM    777  CA  ALA A 777    2948.800   0.000   0.000  1.00  0.00           C  
+ATOM    778  CA  LYS A 778    2952.600   0.000   0.000  1.00  0.00           C  
+ATOM    779  CA  VAL A 779    2956.400   0.000   0.000  1.00  0.00           C  
+ATOM    780  CA  LYS A 780    2960.200   0.000   0.000  1.00  0.00           C  
+ATOM    781  CA  PRO A 781    2964.000   0.000   0.000  1.00  0.00           C  
+ATOM    782  CA  GLU A 782    2967.800   0.000   0.000  1.00  0.00           C  
+ATOM    783  CA  GLU A 783    2971.600   0.000   0.000  1.00  0.00           C  
+ATOM    784  CA  SER A 784    2975.400   0.000   0.000  1.00  0.00           C  
+ATOM    785  CA  ARG A 785    2979.200   0.000   0.000  1.00  0.00           C  
+ATOM    786  CA  ASP A 786    2983.000   0.000   0.000  1.00  0.00           C  
+ATOM    787  CA  ILE A 787    2986.800   0.000   0.000  1.00  0.00           C  
+ATOM    788  CA  THR A 788    2990.600   0.000   0.000  1.00  0.00           C  
+ATOM    789  CA  ARG A 789    2994.400   0.000   0.000  1.00  0.00           C  
+ATOM    790  CA  PRO A 790    2998.200   0.000   0.000  1.00  0.00           C  
+ATOM    791  CA  SER A 791    3002.000   0.000   0.000  1.00  0.00           C  
+ATOM    792  CA  ARG A 792    3005.800   0.000   0.000  1.00  0.00           C  
+ATOM    793  CA  PRO A 793    3009.600   0.000   0.000  1.00  0.00           C  
+ATOM    794  CA  ALA A 794    3013.400   0.000   0.000  1.00  0.00           C  
+ATOM    795  CA  SER A 795    3017.200   0.000   0.000  1.00  0.00           C  
+ATOM    796  CA  TYR A 796    3021.000   0.000   0.000  1.00  0.00           C  
+ATOM    797  CA  LYS A 797    3024.800   0.000   0.000  1.00  0.00           C  
+ATOM    798  CA  LYS A 798    3028.600   0.000   0.000  1.00  0.00           C  
+ATOM    799  CA  ALA A 799    3032.400   0.000   0.000  1.00  0.00           C  
+ATOM    800  CA  ILE A 800    3036.200   0.000   0.000  1.00  0.00           C  
+ATOM    801  CA  ASP A 801    3040.000   0.000   0.000  1.00  0.00           C  
+ATOM    802  CA  GLU A 802    3043.800   0.000   0.000  1.00  0.00           C  
+ATOM    803  CA  ASP A 803    3047.600   0.000   0.000  1.00  0.00           C  
+ATOM    804  CA  LEU A 804    3051.400   0.000   0.000  1.00  0.00           C  
+ATOM    805  CA  THR A 805    3055.200   0.000   0.000  1.00  0.00           C  
+ATOM    806  CA  ALA A 806    3059.000   0.000   0.000  1.00  0.00           C  
+ATOM    807  CA  LEU A 807    3062.800   0.000   0.000  1.00  0.00           C  
+ATOM    808  CA  ALA A 808    3066.600   0.000   0.000  1.00  0.00           C  
+ATOM    809  CA  LYS A 809    3070.400   0.000   0.000  1.00  0.00           C  
+ATOM    810  CA  GLU A 810    3074.200   0.000   0.000  1.00  0.00           C  
+ATOM    811  CA  LEU A 811    3078.000   0.000   0.000  1.00  0.00           C  
+ATOM    812  CA  ARG A 812    3081.800   0.000   0.000  1.00  0.00           C  
+ATOM    813  CA  GLU A 813    3085.600   0.000   0.000  1.00  0.00           C  
+ATOM    814  CA  LEU A 814    3089.400   0.000   0.000  1.00  0.00           C  
+ATOM    815  CA  ARG A 815    3093.200   0.000   0.000  1.00  0.00           C  
+ATOM    816  CA  ILE A 816    3097.000   0.000   0.000  1.00  0.00           C  
+ATOM    817  CA  GLU A 817    3100.800   0.000   0.000  1.00  0.00           C  
+ATOM    818  CA  GLU A 818    3104.600   0.000   0.000  1.00  0.00           C  
+ATOM    819  CA  THR A 819    3108.400   0.000   0.000  1.00  0.00           C  
+ATOM    820  CA  ASN A 820    3112.200   0.000   0.000  1.00  0.00           C  
+ATOM    821  CA  ARG A 821    3116.000   0.000   0.000  1.00  0.00           C  
+ATOM    822  CA  PRO A 822    3119.800   0.000   0.000  1.00  0.00           C  
+ATOM    823  CA  MET A 823    3123.600   0.000   0.000  1.00  0.00           C  
+ATOM    824  CA  LYS A 824    3127.400   0.000   0.000  1.00  0.00           C  
+ATOM    825  CA  LYS A 825    3131.200   0.000   0.000  1.00  0.00           C  
+ATOM    826  CA  VAL A 826    3135.000   0.000   0.000  1.00  0.00           C  
+ATOM    827  CA  THR A 827    3138.800   0.000   0.000  1.00  0.00           C  
+ATOM    828  CA  ASP A 828    3142.600   0.000   0.000  1.00  0.00           C  
+ATOM    829  CA  TYR A 829    3146.400   0.000   0.000  1.00  0.00           C  
+ATOM    830  CA  SER A 830    3150.200   0.000   0.000  1.00  0.00           C  
+ATOM    831  CA  SER A 831    3154.000   0.000   0.000  1.00  0.00           C  
+ATOM    832  CA  SER A 832    3157.800   0.000   0.000  1.00  0.00           C  
+ATOM    833  CA  SER A 833    3161.600   0.000   0.000  1.00  0.00           C  
+ATOM    834  CA  GLU A 834    3165.400   0.000   0.000  1.00  0.00           C  
+ATOM    835  CA  GLU A 835    3169.200   0.000   0.000  1.00  0.00           C  
+ATOM    836  CA  SER A 836    3173.000   0.000   0.000  1.00  0.00           C  
+ATOM    837  CA  GLU A 837    3176.800   0.000   0.000  1.00  0.00           C  
+ATOM    838  CA  SER A 838    3180.600   0.000   0.000  1.00  0.00           C  
+ATOM    839  CA  SER A 839    3184.400   0.000   0.000  1.00  0.00           C  
+ATOM    840  CA  GLU A 840    3188.200   0.000   0.000  1.00  0.00           C  
+ATOM    841  CA  GLU A 841    3192.000   0.000   0.000  1.00  0.00           C  
+ATOM    842  CA  GLU A 842    3195.800   0.000   0.000  1.00  0.00           C  
+ATOM    843  CA  GLU A 843    3199.600   0.000   0.000  1.00  0.00           C  
+ATOM    844  CA  GLU A 844    3203.400   0.000   0.000  1.00  0.00           C  
+ATOM    845  CA  ASP A 845    3207.200   0.000   0.000  1.00  0.00           C  
+ATOM    846  CA  GLY A 846    3211.000   0.000   0.000  1.00  0.00           C  
+ATOM    847  CA  GLU A 847    3214.800   0.000   0.000  1.00  0.00           C  
+ATOM    848  CA  SER A 848    3218.600   0.000   0.000  1.00  0.00           C  
+ATOM    849  CA  GLU A 849    3222.400   0.000   0.000  1.00  0.00           C  
+ATOM    850  CA  THR A 850    3226.200   0.000   0.000  1.00  0.00           C  
+ATOM    851  CA  HIS A 851    3230.000   0.000   0.000  1.00  0.00           C  
+ATOM    852  CA  ASP A 852    3233.800   0.000   0.000  1.00  0.00           C  
+ATOM    853  CA  GLY A 853    3237.600   0.000   0.000  1.00  0.00           C  
+ATOM    854  CA  THR A 854    3241.400   0.000   0.000  1.00  0.00           C  
+ATOM    855  CA  VAL A 855    3245.200   0.000   0.000  1.00  0.00           C  
+ATOM    856  CA  ALA A 856    3249.000   0.000   0.000  1.00  0.00           C  
+ATOM    857  CA  VAL A 857    3252.800   0.000   0.000  1.00  0.00           C  
+ATOM    858  CA  SER A 858    3256.600   0.000   0.000  1.00  0.00           C  
+ATOM    859  CA  ASP A 859    3260.400   0.000   0.000  1.00  0.00           C  
+ATOM    860  CA  ILE A 860    3264.200   0.000   0.000  1.00  0.00           C  
+ATOM    861  CA  PRO A 861    3268.000   0.000   0.000  1.00  0.00           C  
+ATOM    862  CA  ARG A 862    3271.800   0.000   0.000  1.00  0.00           C  
+ATOM    863  CA  LEU A 863    3275.600   0.000   0.000  1.00  0.00           C  
+ATOM    864  CA  ILE A 864    3279.400   0.000   0.000  1.00  0.00           C  
+ATOM    865  CA  PRO A 865    3283.200   0.000   0.000  1.00  0.00           C  
+ATOM    866  CA  THR A 866    3287.000   0.000   0.000  1.00  0.00           C  
+ATOM    867  CA  GLY A 867    3290.800   0.000   0.000  1.00  0.00           C  
+ATOM    868  CA  ALA A 868    3294.600   0.000   0.000  1.00  0.00           C  
+ATOM    869  CA  PRO A 869    3298.400   0.000   0.000  1.00  0.00           C  
+ATOM    870  CA  GLY A 870    3302.200   0.000   0.000  1.00  0.00           C  
+ATOM    871  CA  SER A 871    3306.000   0.000   0.000  1.00  0.00           C  
+ATOM    872  CA  ASN A 872    3309.800   0.000   0.000  1.00  0.00           C  
+ATOM    873  CA  GLU A 873    3313.600   0.000   0.000  1.00  0.00           C  
+ATOM    874  CA  GLN A 874    3317.400   0.000   0.000  1.00  0.00           C  
+ATOM    875  CA  TYR A 875    3321.200   0.000   0.000  1.00  0.00           C  
+ATOM    876  CA  ASN A 876    3325.000   0.000   0.000  1.00  0.00           C  
+ATOM    877  CA  VAL A 877    3328.800   0.000   0.000  1.00  0.00           C  
+ATOM    878  CA  GLY A 878    3332.600   0.000   0.000  1.00  0.00           C  
+ATOM    879  CA  MET A 879    3336.400   0.000   0.000  1.00  0.00           C  
+ATOM    880  CA  VAL A 880    3340.200   0.000   0.000  1.00  0.00           C  
+ATOM    881  CA  GLY A 881    3344.000   0.000   0.000  1.00  0.00           C  
+ATOM    882  CA  THR A 882    3347.800   0.000   0.000  1.00  0.00           C  
+ATOM    883  CA  HIS A 883    3351.600   0.000   0.000  1.00  0.00           C  
+ATOM    884  CA  GLY A 884    3355.400   0.000   0.000  1.00  0.00           C  
+ATOM    885  CA  LEU A 885    3359.200   0.000   0.000  1.00  0.00           C  
+ATOM    886  CA  GLU A 886    3363.000   0.000   0.000  1.00  0.00           C  
+ATOM    887  CA  THR A 887    3366.800   0.000   0.000  1.00  0.00           C  
+ATOM    888  CA  SER A 888    3370.600   0.000   0.000  1.00  0.00           C  
+ATOM    889  CA  HIS A 889    3374.400   0.000   0.000  1.00  0.00           C  
+ATOM    890  CA  ALA A 890    3378.200   0.000   0.000  1.00  0.00           C  
+ATOM    891  CA  ASP A 891    3382.000   0.000   0.000  1.00  0.00           C  
+ATOM    892  CA  SER A 892    3385.800   0.000   0.000  1.00  0.00           C  
+ATOM    893  CA  PHE A 893    3389.600   0.000   0.000  1.00  0.00           C  
+ATOM    894  CA  SER A 894    3393.400   0.000   0.000  1.00  0.00           C  
+ATOM    895  CA  GLY A 895    3397.200   0.000   0.000  1.00  0.00           C  
+ATOM    896  CA  SER A 896    3401.000   0.000   0.000  1.00  0.00           C  
+ATOM    897  CA  ILE A 897    3404.800   0.000   0.000  1.00  0.00           C  
+ATOM    898  CA  SER A 898    3408.600   0.000   0.000  1.00  0.00           C  
+ATOM    899  CA  ARG A 899    3412.400   0.000   0.000  1.00  0.00           C  
+ATOM    900  CA  GLU A 900    3416.200   0.000   0.000  1.00  0.00           C  
+ATOM    901  CA  GLY A 901    3420.000   0.000   0.000  1.00  0.00           C  
+ATOM    902  CA  THR A 902    3423.800   0.000   0.000  1.00  0.00           C  
+ATOM    903  CA  LEU A 903    3427.600   0.000   0.000  1.00  0.00           C  
+ATOM    904  CA  MET A 904    3431.400   0.000   0.000  1.00  0.00           C  
+ATOM    905  CA  ILE A 905    3435.200   0.000   0.000  1.00  0.00           C  
+ATOM    906  CA  ARG A 906    3439.000   0.000   0.000  1.00  0.00           C  
+ATOM    907  CA  GLU A 907    3442.800   0.000   0.000  1.00  0.00           C  
+ATOM    908  CA  THR A 908    3446.600   0.000   0.000  1.00  0.00           C  
+ATOM    909  CA  SER A 909    3450.400   0.000   0.000  1.00  0.00           C  
+ATOM    910  CA  GLY A 910    3454.200   0.000   0.000  1.00  0.00           C  
+ATOM    911  CA  GLU A 911    3458.000   0.000   0.000  1.00  0.00           C  
+ATOM    912  CA  LYS A 912    3461.800   0.000   0.000  1.00  0.00           C  
+ATOM    913  CA  LYS A 913    3465.600   0.000   0.000  1.00  0.00           C  
+ATOM    914  CA  ARG A 914    3469.400   0.000   0.000  1.00  0.00           C  
+ATOM    915  CA  SER A 915    3473.200   0.000   0.000  1.00  0.00           C  
+ATOM    916  CA  GLY A 916    3477.000   0.000   0.000  1.00  0.00           C  
+ATOM    917  CA  HIS A 917    3480.800   0.000   0.000  1.00  0.00           C  
+ATOM    918  CA  SER A 918    3484.600   0.000   0.000  1.00  0.00           C  
+ATOM    919  CA  ASP A 919    3488.400   0.000   0.000  1.00  0.00           C  
+ATOM    920  CA  SER A 920    3492.200   0.000   0.000  1.00  0.00           C  
+ATOM    921  CA  ASN A 921    3496.000   0.000   0.000  1.00  0.00           C  
+ATOM    922  CA  GLY A 922    3499.800   0.000   0.000  1.00  0.00           C  
+ATOM    923  CA  PHE A 923    3503.600   0.000   0.000  1.00  0.00           C  
+ATOM    924  CA  ALA A 924    3507.400   0.000   0.000  1.00  0.00           C  
+ATOM    925  CA  GLY A 925    3511.200   0.000   0.000  1.00  0.00           C  
+ATOM    926  CA  HIS A 926    3515.000   0.000   0.000  1.00  0.00           C  
+ATOM    927  CA  ILE A 927    3518.800   0.000   0.000  1.00  0.00           C  
+ATOM    928  CA  ASN A 928    3522.600   0.000   0.000  1.00  0.00           C  
+ATOM    929  CA  LEU A 929    3526.400   0.000   0.000  1.00  0.00           C  
+ATOM    930  CA  PRO A 930    3530.200   0.000   0.000  1.00  0.00           C  
+ATOM    931  CA  ASP A 931    3534.000   0.000   0.000  1.00  0.00           C  
+ATOM    932  CA  LEU A 932    3537.800   0.000   0.000  1.00  0.00           C  
+ATOM    933  CA  VAL A 933    3541.600   0.000   0.000  1.00  0.00           C  
+ATOM    934  CA  GLN A 934    3545.400   0.000   0.000  1.00  0.00           C  
+ATOM    935  CA  GLN A 935    3549.200   0.000   0.000  1.00  0.00           C  
+ATOM    936  CA  SER A 936    3553.000   0.000   0.000  1.00  0.00           C  
+ATOM    937  CA  HIS A 937    3556.800   0.000   0.000  1.00  0.00           C  
+ATOM    938  CA  SER A 938    3560.600   0.000   0.000  1.00  0.00           C  
+ATOM    939  CA  PRO A 939    3564.400   0.000   0.000  1.00  0.00           C  
+ATOM    940  CA  ALA A 940    3568.200   0.000   0.000  1.00  0.00           C  
+ATOM    941  CA  GLY A 941    3572.000   0.000   0.000  1.00  0.00           C  
+ATOM    942  CA  THR A 942    3575.800   0.000   0.000  1.00  0.00           C  
+ATOM    943  CA  PRO A 943    3579.600   0.000   0.000  1.00  0.00           C  
+ATOM    944  CA  THR A 944    3583.400   0.000   0.000  1.00  0.00           C  
+ATOM    945  CA  GLU A 945    3587.200   0.000   0.000  1.00  0.00           C  
+ATOM    946  CA  GLY A 946    3591.000   0.000   0.000  1.00  0.00           C  
+ATOM    947  CA  LEU A 947    3594.800   0.000   0.000  1.00  0.00           C  
+ATOM    948  CA  GLY A 948    3598.600   0.000   0.000  1.00  0.00           C  
+ATOM    949  CA  ARG A 949    3602.400   0.000   0.000  1.00  0.00           C  
+ATOM    950  CA  VAL A 950    3606.200   0.000   0.000  1.00  0.00           C  
+ATOM    951  CA  SER A 951    3610.000   0.000   0.000  1.00  0.00           C  
+ATOM    952  CA  THR A 952    3613.800   0.000   0.000  1.00  0.00           C  
+ATOM    953  CA  HIS A 953    3617.600   0.000   0.000  1.00  0.00           C  
+ATOM    954  CA  SER A 954    3621.400   0.000   0.000  1.00  0.00           C  
+ATOM    955  CA  GLN A 955    3625.200   0.000   0.000  1.00  0.00           C  
+ATOM    956  CA  GLU A 956    3629.000   0.000   0.000  1.00  0.00           C  
+ATOM    957  CA  MET A 957    3632.800   0.000   0.000  1.00  0.00           C  
+ATOM    958  CA  ASP A 958    3636.600   0.000   0.000  1.00  0.00           C  
+ATOM    959  CA  SER A 959    3640.400   0.000   0.000  1.00  0.00           C  
+ATOM    960  CA  GLY A 960    3644.200   0.000   0.000  1.00  0.00           C  
+ATOM    961  CA  THR A 961    3648.000   0.000   0.000  1.00  0.00           C  
+ATOM    962  CA  GLU A 962    3651.800   0.000   0.000  1.00  0.00           C  
+ATOM    963  CA  TYR A 963    3655.600   0.000   0.000  1.00  0.00           C  
+ATOM    964  CA  GLY A 964    3659.400   0.000   0.000  1.00  0.00           C  
+ATOM    965  CA  MET A 965    3663.200   0.000   0.000  1.00  0.00           C  
+ATOM    966  CA  GLY A 966    3667.000   0.000   0.000  1.00  0.00           C  
+ATOM    967  CA  SER A 967    3670.800   0.000   0.000  1.00  0.00           C  
+ATOM    968  CA  SER A 968    3674.600   0.000   0.000  1.00  0.00           C  
+ATOM    969  CA  THR A 969    3678.400   0.000   0.000  1.00  0.00           C  
+ATOM    970  CA  LYS A 970    3682.200   0.000   0.000  1.00  0.00           C  
+ATOM    971  CA  ALA A 971    3686.000   0.000   0.000  1.00  0.00           C  
+ATOM    972  CA  SER A 972    3689.800   0.000   0.000  1.00  0.00           C  
+ATOM    973  CA  PHE A 973    3693.600   0.000   0.000  1.00  0.00           C  
+ATOM    974  CA  THR A 974    3697.400   0.000   0.000  1.00  0.00           C  
+ATOM    975  CA  PRO A 975    3701.200   0.000   0.000  1.00  0.00           C  
+ATOM    976  CA  PHE A 976    3705.000   0.000   0.000  1.00  0.00           C  
+ATOM    977  CA  VAL A 977    3708.800   0.000   0.000  1.00  0.00           C  
+ATOM    978  CA  ASP A 978    3712.600   0.000   0.000  1.00  0.00           C  
+ATOM    979  CA  PRO A 979    3716.400   0.000   0.000  1.00  0.00           C  
+ATOM    980  CA  ARG A 980    3720.200   0.000   0.000  1.00  0.00           C  
+ATOM    981  CA  VAL A 981    3724.000   0.000   0.000  1.00  0.00           C  
+ATOM    982  CA  TYR A 982    3727.800   0.000   0.000  1.00  0.00           C  
+ATOM    983  CA  GLN A 983    3731.600   0.000   0.000  1.00  0.00           C  
+ATOM    984  CA  THR A 984    3735.400   0.000   0.000  1.00  0.00           C  
+ATOM    985  CA  SER A 985    3739.200   0.000   0.000  1.00  0.00           C  
+ATOM    986  CA  PRO A 986    3743.000   0.000   0.000  1.00  0.00           C  
+ATOM    987  CA  THR A 987    3746.800   0.000   0.000  1.00  0.00           C  
+ATOM    988  CA  ASP A 988    3750.600   0.000   0.000  1.00  0.00           C  
+ATOM    989  CA  GLU A 989    3754.400   0.000   0.000  1.00  0.00           C  
+ATOM    990  CA  ASP A 990    3758.200   0.000   0.000  1.00  0.00           C  
+ATOM    991  CA  GLU A 991    3762.000   0.000   0.000  1.00  0.00           C  
+ATOM    992  CA  GLU A 992    3765.800   0.000   0.000  1.00  0.00           C  
+ATOM    993  CA  ASP A 993    3769.600   0.000   0.000  1.00  0.00           C  
+ATOM    994  CA  GLU A 994    3773.400   0.000   0.000  1.00  0.00           C  
+ATOM    995  CA  GLU A 995    3777.200   0.000   0.000  1.00  0.00           C  
+ATOM    996  CA  SER A 996    3781.000   0.000   0.000  1.00  0.00           C  
+ATOM    997  CA  SER A 997    3784.800   0.000   0.000  1.00  0.00           C  
+ATOM    998  CA  ALA A 998    3788.600   0.000   0.000  1.00  0.00           C  
+ATOM    999  CA  ALA A 999    3792.400   0.000   0.000  1.00  0.00           C  
+ATOM   1000  CA  ALA A1000    3796.200   0.000   0.000  1.00  0.00           C  
+ATOM   1001  CA  LEU A1001    3800.000   0.000   0.000  1.00  0.00           C  
+ATOM   1002  CA  PHE A1002    3803.800   0.000   0.000  1.00  0.00           C  
+ATOM   1003  CA  THR A1003    3807.600   0.000   0.000  1.00  0.00           C  
+ATOM   1004  CA  SER A1004    3811.400   0.000   0.000  1.00  0.00           C  
+ATOM   1005  CA  GLU A1005    3815.200   0.000   0.000  1.00  0.00           C  
+ATOM   1006  CA  LEU A1006    3819.000   0.000   0.000  1.00  0.00           C  
+ATOM   1007  CA  LEU A1007    3822.800   0.000   0.000  1.00  0.00           C  
+ATOM   1008  CA  ARG A1008    3826.600   0.000   0.000  1.00  0.00           C  
+ATOM   1009  CA  GLN A1009    3830.400   0.000   0.000  1.00  0.00           C  
+ATOM   1010  CA  GLU A1010    3834.200   0.000   0.000  1.00  0.00           C  
+ATOM   1011  CA  GLN A1011    3838.000   0.000   0.000  1.00  0.00           C  
+ATOM   1012  CA  ALA A1012    3841.800   0.000   0.000  1.00  0.00           C  
+ATOM   1013  CA  LYS A1013    3845.600   0.000   0.000  1.00  0.00           C  
+ATOM   1014  CA  LEU A1014    3849.400   0.000   0.000  1.00  0.00           C  
+ATOM   1015  CA  ASN A1015    3853.200   0.000   0.000  1.00  0.00           C  
+ATOM   1016  CA  GLU A1016    3857.000   0.000   0.000  1.00  0.00           C  
+ATOM   1017  CA  ALA A1017    3860.800   0.000   0.000  1.00  0.00           C  
+ATOM   1018  CA  ARG A1018    3864.600   0.000   0.000  1.00  0.00           C  
+ATOM   1019  CA  LYS A1019    3868.400   0.000   0.000  1.00  0.00           C  
+ATOM   1020  CA  ILE A1020    3872.200   0.000   0.000  1.00  0.00           C  
+ATOM   1021  CA  SER A1021    3876.000   0.000   0.000  1.00  0.00           C  
+ATOM   1022  CA  VAL A1022    3879.800   0.000   0.000  1.00  0.00           C  
+ATOM   1023  CA  VAL A1023    3883.600   0.000   0.000  1.00  0.00           C  
+ATOM   1024  CA  ASN A1024    3887.400   0.000   0.000  1.00  0.00           C  
+ATOM   1025  CA  VAL A1025    3891.200   0.000   0.000  1.00  0.00           C  
+ATOM   1026  CA  ASN A1026    3895.000   0.000   0.000  1.00  0.00           C  
+ATOM   1027  CA  PRO A1027    3898.800   0.000   0.000  1.00  0.00           C  
+ATOM   1028  CA  THR A1028    3902.600   0.000   0.000  1.00  0.00           C  
+ATOM   1029  CA  ASN A1029    3906.400   0.000   0.000  1.00  0.00           C  
+ATOM   1030  CA  ILE A1030    3910.200   0.000   0.000  1.00  0.00           C  
+ATOM   1031  CA  ARG A1031    3914.000   0.000   0.000  1.00  0.00           C  
+ATOM   1032  CA  PRO A1032    3917.800   0.000   0.000  1.00  0.00           C  
+ATOM   1033  CA  HIS A1033    3921.600   0.000   0.000  1.00  0.00           C  
+ATOM   1034  CA  SER A1034    3925.400   0.000   0.000  1.00  0.00           C  
+ATOM   1035  CA  ASP A1035    3929.200   0.000   0.000  1.00  0.00           C  
+ATOM   1036  CA  THR A1036    3933.000   0.000   0.000  1.00  0.00           C  
+ATOM   1037  CA  PRO A1037    3936.800   0.000   0.000  1.00  0.00           C  
+ATOM   1038  CA  GLU A1038    3940.600   0.000   0.000  1.00  0.00           C  
+ATOM   1039  CA  ILE A1039    3944.400   0.000   0.000  1.00  0.00           C  
+ATOM   1040  CA  ARG A1040    3948.200   0.000   0.000  1.00  0.00           C  
+ATOM   1041  CA  LYS A1041    3952.000   0.000   0.000  1.00  0.00           C  
+ATOM   1042  CA  TYR A1042    3955.800   0.000   0.000  1.00  0.00           C  
+ATOM   1043  CA  LYS A1043    3959.600   0.000   0.000  1.00  0.00           C  
+ATOM   1044  CA  LYS A1044    3963.400   0.000   0.000  1.00  0.00           C  
+ATOM   1045  CA  ARG A1045    3967.200   0.000   0.000  1.00  0.00           C  
+ATOM   1046  CA  PHE A1046    3971.000   0.000   0.000  1.00  0.00           C  
+ATOM   1047  CA  ASN A1047    3974.800   0.000   0.000  1.00  0.00           C  
+ATOM   1048  CA  SER A1048    3978.600   0.000   0.000  1.00  0.00           C  
+ATOM   1049  CA  GLU A1049    3982.400   0.000   0.000  1.00  0.00           C  
+ATOM   1050  CA  ILE A1050    3986.200   0.000   0.000  1.00  0.00           C  
+ATOM   1051  CA  LEU A1051    3990.000   0.000   0.000  1.00  0.00           C  
+ATOM   1052  CA  CYS A1052    3993.800   0.000   0.000  1.00  0.00           C  
+ATOM   1053  CA  ALA A1053    3997.600   0.000   0.000  1.00  0.00           C  
+ATOM   1054  CA  ALA A1054    4001.400   0.000   0.000  1.00  0.00           C  
+ATOM   1055  CA  LEU A1055    4005.200   0.000   0.000  1.00  0.00           C  
+ATOM   1056  CA  TRP A1056    4009.000   0.000   0.000  1.00  0.00           C  
+ATOM   1057  CA  GLY A1057    4012.800   0.000   0.000  1.00  0.00           C  
+ATOM   1058  CA  VAL A1058    4016.600   0.000   0.000  1.00  0.00           C  
+ATOM   1059  CA  ASN A1059    4020.400   0.000   0.000  1.00  0.00           C  
+ATOM   1060  CA  LEU A1060    4024.200   0.000   0.000  1.00  0.00           C  
+ATOM   1061  CA  LEU A1061    4028.000   0.000   0.000  1.00  0.00           C  
+ATOM   1062  CA  VAL A1062    4031.800   0.000   0.000  1.00  0.00           C  
+ATOM   1063  CA  GLY A1063    4035.600   0.000   0.000  1.00  0.00           C  
+ATOM   1064  CA  THR A1064    4039.400   0.000   0.000  1.00  0.00           C  
+ATOM   1065  CA  GLU A1065    4043.200   0.000   0.000  1.00  0.00           C  
+ATOM   1066  CA  ASN A1066    4047.000   0.000   0.000  1.00  0.00           C  
+ATOM   1067  CA  GLY A1067    4050.800   0.000   0.000  1.00  0.00           C  
+ATOM   1068  CA  LEU A1068    4054.600   0.000   0.000  1.00  0.00           C  
+ATOM   1069  CA  MET A1069    4058.400   0.000   0.000  1.00  0.00           C  
+ATOM   1070  CA  LEU A1070    4062.200   0.000   0.000  1.00  0.00           C  
+ATOM   1071  CA  LEU A1071    4066.000   0.000   0.000  1.00  0.00           C  
+ATOM   1072  CA  ASP A1072    4069.800   0.000   0.000  1.00  0.00           C  
+ATOM   1073  CA  ARG A1073    4073.600   0.000   0.000  1.00  0.00           C  
+ATOM   1074  CA  SER A1074    4077.400   0.000   0.000  1.00  0.00           C  
+ATOM   1075  CA  GLY A1075    4081.200   0.000   0.000  1.00  0.00           C  
+ATOM   1076  CA  GLN A1076    4085.000   0.000   0.000  1.00  0.00           C  
+ATOM   1077  CA  GLY A1077    4088.800   0.000   0.000  1.00  0.00           C  
+ATOM   1078  CA  LYS A1078    4092.600   0.000   0.000  1.00  0.00           C  
+ATOM   1079  CA  VAL A1079    4096.400   0.000   0.000  1.00  0.00           C  
+ATOM   1080  CA  TYR A1080    4100.200   0.000   0.000  1.00  0.00           C  
+ATOM   1081  CA  ASN A1081    4104.000   0.000   0.000  1.00  0.00           C  
+ATOM   1082  CA  LEU A1082    4107.800   0.000   0.000  1.00  0.00           C  
+ATOM   1083  CA  ILE A1083    4111.600   0.000   0.000  1.00  0.00           C  
+ATOM   1084  CA  ASN A1084    4115.400   0.000   0.000  1.00  0.00           C  
+ATOM   1085  CA  ARG A1085    4119.200   0.000   0.000  1.00  0.00           C  
+ATOM   1086  CA  ARG A1086    4123.000   0.000   0.000  1.00  0.00           C  
+ATOM   1087  CA  ARG A1087    4126.800   0.000   0.000  1.00  0.00           C  
+ATOM   1088  CA  PHE A1088    4130.600   0.000   0.000  1.00  0.00           C  
+ATOM   1089  CA  GLN A1089    4134.400   0.000   0.000  1.00  0.00           C  
+ATOM   1090  CA  GLN A1090    4138.200   0.000   0.000  1.00  0.00           C  
+ATOM   1091  CA  MET A1091    4142.000   0.000   0.000  1.00  0.00           C  
+ATOM   1092  CA  ASP A1092    4145.800   0.000   0.000  1.00  0.00           C  
+ATOM   1093  CA  VAL A1093    4149.600   0.000   0.000  1.00  0.00           C  
+ATOM   1094  CA  LEU A1094    4153.400   0.000   0.000  1.00  0.00           C  
+ATOM   1095  CA  GLU A1095    4157.200   0.000   0.000  1.00  0.00           C  
+ATOM   1096  CA  GLY A1096    4161.000   0.000   0.000  1.00  0.00           C  
+ATOM   1097  CA  LEU A1097    4164.800   0.000   0.000  1.00  0.00           C  
+ATOM   1098  CA  ASN A1098    4168.600   0.000   0.000  1.00  0.00           C  
+ATOM   1099  CA  VAL A1099    4172.400   0.000   0.000  1.00  0.00           C  
+ATOM   1100  CA  LEU A1100    4176.200   0.000   0.000  1.00  0.00           C  
+ATOM   1101  CA  VAL A1101    4180.000   0.000   0.000  1.00  0.00           C  
+ATOM   1102  CA  THR A1102    4183.800   0.000   0.000  1.00  0.00           C  
+ATOM   1103  CA  ILE A1103    4187.600   0.000   0.000  1.00  0.00           C  
+ATOM   1104  CA  SER A1104    4191.400   0.000   0.000  1.00  0.00           C  
+ATOM   1105  CA  GLY A1105    4195.200   0.000   0.000  1.00  0.00           C  
+ATOM   1106  CA  LYS A1106    4199.000   0.000   0.000  1.00  0.00           C  
+ATOM   1107  CA  LYS A1107    4202.800   0.000   0.000  1.00  0.00           C  
+ATOM   1108  CA  ASN A1108    4206.600   0.000   0.000  1.00  0.00           C  
+ATOM   1109  CA  LYS A1109    4210.400   0.000   0.000  1.00  0.00           C  
+ATOM   1110  CA  LEU A1110    4214.200   0.000   0.000  1.00  0.00           C  
+ATOM   1111  CA  ARG A1111    4218.000   0.000   0.000  1.00  0.00           C  
+ATOM   1112  CA  VAL A1112    4221.800   0.000   0.000  1.00  0.00           C  
+ATOM   1113  CA  TYR A1113    4225.600   0.000   0.000  1.00  0.00           C  
+ATOM   1114  CA  TYR A1114    4229.400   0.000   0.000  1.00  0.00           C  
+ATOM   1115  CA  LEU A1115    4233.200   0.000   0.000  1.00  0.00           C  
+ATOM   1116  CA  SER A1116    4237.000   0.000   0.000  1.00  0.00           C  
+ATOM   1117  CA  TRP A1117    4240.800   0.000   0.000  1.00  0.00           C  
+ATOM   1118  CA  LEU A1118    4244.600   0.000   0.000  1.00  0.00           C  
+ATOM   1119  CA  ARG A1119    4248.400   0.000   0.000  1.00  0.00           C  
+ATOM   1120  CA  ASN A1120    4252.200   0.000   0.000  1.00  0.00           C  
+ATOM   1121  CA  ARG A1121    4256.000   0.000   0.000  1.00  0.00           C  
+ATOM   1122  CA  ILE A1122    4259.800   0.000   0.000  1.00  0.00           C  
+ATOM   1123  CA  LEU A1123    4263.600   0.000   0.000  1.00  0.00           C  
+ATOM   1124  CA  HIS A1124    4267.400   0.000   0.000  1.00  0.00           C  
+ATOM   1125  CA  ASN A1125    4271.200   0.000   0.000  1.00  0.00           C  
+ATOM   1126  CA  ASP A1126    4275.000   0.000   0.000  1.00  0.00           C  
+ATOM   1127  CA  PRO A1127    4278.800   0.000   0.000  1.00  0.00           C  
+ATOM   1128  CA  GLU A1128    4282.600   0.000   0.000  1.00  0.00           C  
+ATOM   1129  CA  VAL A1129    4286.400   0.000   0.000  1.00  0.00           C  
+ATOM   1130  CA  GLU A1130    4290.200   0.000   0.000  1.00  0.00           C  
+ATOM   1131  CA  LYS A1131    4294.000   0.000   0.000  1.00  0.00           C  
+ATOM   1132  CA  LYS A1132    4297.800   0.000   0.000  1.00  0.00           C  
+ATOM   1133  CA  GLN A1133    4301.600   0.000   0.000  1.00  0.00           C  
+ATOM   1134  CA  GLY A1134    4305.400   0.000   0.000  1.00  0.00           C  
+ATOM   1135  CA  TRP A1135    4309.200   0.000   0.000  1.00  0.00           C  
+ATOM   1136  CA  ILE A1136    4313.000   0.000   0.000  1.00  0.00           C  
+ATOM   1137  CA  THR A1137    4316.800   0.000   0.000  1.00  0.00           C  
+ATOM   1138  CA  VAL A1138    4320.600   0.000   0.000  1.00  0.00           C  
+ATOM   1139  CA  GLY A1139    4324.400   0.000   0.000  1.00  0.00           C  
+ATOM   1140  CA  ASP A1140    4328.200   0.000   0.000  1.00  0.00           C  
+ATOM   1141  CA  LEU A1141    4332.000   0.000   0.000  1.00  0.00           C  
+ATOM   1142  CA  GLU A1142    4335.800   0.000   0.000  1.00  0.00           C  
+ATOM   1143  CA  GLY A1143    4339.600   0.000   0.000  1.00  0.00           C  
+ATOM   1144  CA  CYS A1144    4343.400   0.000   0.000  1.00  0.00           C  
+ATOM   1145  CA  ILE A1145    4347.200   0.000   0.000  1.00  0.00           C  
+ATOM   1146  CA  HIS A1146    4351.000   0.000   0.000  1.00  0.00           C  
+ATOM   1147  CA  TYR A1147    4354.800   0.000   0.000  1.00  0.00           C  
+ATOM   1148  CA  LYS A1148    4358.600   0.000   0.000  1.00  0.00           C  
+ATOM   1149  CA  VAL A1149    4362.400   0.000   0.000  1.00  0.00           C  
+ATOM   1150  CA  VAL A1150    4366.200   0.000   0.000  1.00  0.00           C  
+ATOM   1151  CA  LYS A1151    4370.000   0.000   0.000  1.00  0.00           C  
+ATOM   1152  CA  TYR A1152    4373.800   0.000   0.000  1.00  0.00           C  
+ATOM   1153  CA  GLU A1153    4377.600   0.000   0.000  1.00  0.00           C  
+ATOM   1154  CA  ARG A1154    4381.400   0.000   0.000  1.00  0.00           C  
+ATOM   1155  CA  ILE A1155    4385.200   0.000   0.000  1.00  0.00           C  
+ATOM   1156  CA  LYS A1156    4389.000   0.000   0.000  1.00  0.00           C  
+ATOM   1157  CA  PHE A1157    4392.800   0.000   0.000  1.00  0.00           C  
+ATOM   1158  CA  LEU A1158    4396.600   0.000   0.000  1.00  0.00           C  
+ATOM   1159  CA  VAL A1159    4400.400   0.000   0.000  1.00  0.00           C  
+ATOM   1160  CA  ILE A1160    4404.200   0.000   0.000  1.00  0.00           C  
+ATOM   1161  CA  ALA A1161    4408.000   0.000   0.000  1.00  0.00           C  
+ATOM   1162  CA  LEU A1162    4411.800   0.000   0.000  1.00  0.00           C  
+ATOM   1163  CA  LYS A1163    4415.600   0.000   0.000  1.00  0.00           C  
+ATOM   1164  CA  ASN A1164    4419.400   0.000   0.000  1.00  0.00           C  
+ATOM   1165  CA  ALA A1165    4423.200   0.000   0.000  1.00  0.00           C  
+ATOM   1166  CA  VAL A1166    4427.000   0.000   0.000  1.00  0.00           C  
+ATOM   1167  CA  GLU A1167    4430.800   0.000   0.000  1.00  0.00           C  
+ATOM   1168  CA  ILE A1168    4434.600   0.000   0.000  1.00  0.00           C  
+ATOM   1169  CA  TYR A1169    4438.400   0.000   0.000  1.00  0.00           C  
+ATOM   1170  CA  ALA A1170    4442.200   0.000   0.000  1.00  0.00           C  
+ATOM   1171  CA  TRP A1171    4446.000   0.000   0.000  1.00  0.00           C  
+ATOM   1172  CA  ALA A1172    4449.800   0.000   0.000  1.00  0.00           C  
+ATOM   1173  CA  PRO A1173    4453.600   0.000   0.000  1.00  0.00           C  
+ATOM   1174  CA  LYS A1174    4457.400   0.000   0.000  1.00  0.00           C  
+ATOM   1175  CA  PRO A1175    4461.200   0.000   0.000  1.00  0.00           C  
+ATOM   1176  CA  TYR A1176    4465.000   0.000   0.000  1.00  0.00           C  
+ATOM   1177  CA  HIS A1177    4468.800   0.000   0.000  1.00  0.00           C  
+ATOM   1178  CA  LYS A1178    4472.600   0.000   0.000  1.00  0.00           C  
+ATOM   1179  CA  PHE A1179    4476.400   0.000   0.000  1.00  0.00           C  
+ATOM   1180  CA  MET A1180    4480.200   0.000   0.000  1.00  0.00           C  
+ATOM   1181  CA  ALA A1181    4484.000   0.000   0.000  1.00  0.00           C  
+ATOM   1182  CA  PHE A1182    4487.800   0.000   0.000  1.00  0.00           C  
+ATOM   1183  CA  LYS A1183    4491.600   0.000   0.000  1.00  0.00           C  
+ATOM   1184  CA  SER A1184    4495.400   0.000   0.000  1.00  0.00           C  
+ATOM   1185  CA  PHE A1185    4499.200   0.000   0.000  1.00  0.00           C  
+ATOM   1186  CA  ALA A1186    4503.000   0.000   0.000  1.00  0.00           C  
+ATOM   1187  CA  ASP A1187    4506.800   0.000   0.000  1.00  0.00           C  
+ATOM   1188  CA  LEU A1188    4510.600   0.000   0.000  1.00  0.00           C  
+ATOM   1189  CA  GLN A1189    4514.400   0.000   0.000  1.00  0.00           C  
+ATOM   1190  CA  HIS A1190    4518.200   0.000   0.000  1.00  0.00           C  
+ATOM   1191  CA  LYS A1191    4522.000   0.000   0.000  1.00  0.00           C  
+ATOM   1192  CA  PRO A1192    4525.800   0.000   0.000  1.00  0.00           C  
+ATOM   1193  CA  LEU A1193    4529.600   0.000   0.000  1.00  0.00           C  
+ATOM   1194  CA  LEU A1194    4533.400   0.000   0.000  1.00  0.00           C  
+ATOM   1195  CA  VAL A1195    4537.200   0.000   0.000  1.00  0.00           C  
+ATOM   1196  CA  ASP A1196    4541.000   0.000   0.000  1.00  0.00           C  
+ATOM   1197  CA  LEU A1197    4544.800   0.000   0.000  1.00  0.00           C  
+ATOM   1198  CA  THR A1198    4548.600   0.000   0.000  1.00  0.00           C  
+ATOM   1199  CA  VAL A1199    4552.400   0.000   0.000  1.00  0.00           C  
+ATOM   1200  CA  GLU A1200    4556.200   0.000   0.000  1.00  0.00           C  
+ATOM   1201  CA  GLU A1201    4560.000   0.000   0.000  1.00  0.00           C  
+ATOM   1202  CA  GLY A1202    4563.800   0.000   0.000  1.00  0.00           C  
+ATOM   1203  CA  GLN A1203    4567.600   0.000   0.000  1.00  0.00           C  
+ATOM   1204  CA  ARG A1204    4571.400   0.000   0.000  1.00  0.00           C  
+ATOM   1205  CA  LEU A1205    4575.200   0.000   0.000  1.00  0.00           C  
+ATOM   1206  CA  LYS A1206    4579.000   0.000   0.000  1.00  0.00           C  
+ATOM   1207  CA  VAL A1207    4582.800   0.000   0.000  1.00  0.00           C  
+ATOM   1208  CA  ILE A1208    4586.600   0.000   0.000  1.00  0.00           C  
+ATOM   1209  CA  PHE A1209    4590.400   0.000   0.000  1.00  0.00           C  
+ATOM   1210  CA  GLY A1210    4594.200   0.000   0.000  1.00  0.00           C  
+ATOM   1211  CA  SER A1211    4598.000   0.000   0.000  1.00  0.00           C  
+ATOM   1212  CA  HIS A1212    4601.800   0.000   0.000  1.00  0.00           C  
+ATOM   1213  CA  THR A1213    4605.600   0.000   0.000  1.00  0.00           C  
+ATOM   1214  CA  GLY A1214    4609.400   0.000   0.000  1.00  0.00           C  
+ATOM   1215  CA  PHE A1215    4613.200   0.000   0.000  1.00  0.00           C  
+ATOM   1216  CA  HIS A1216    4617.000   0.000   0.000  1.00  0.00           C  
+ATOM   1217  CA  VAL A1217    4620.800   0.000   0.000  1.00  0.00           C  
+ATOM   1218  CA  ILE A1218    4624.600   0.000   0.000  1.00  0.00           C  
+ATOM   1219  CA  ASP A1219    4628.400   0.000   0.000  1.00  0.00           C  
+ATOM   1220  CA  VAL A1220    4632.200   0.000   0.000  1.00  0.00           C  
+ATOM   1221  CA  ASP A1221    4636.000   0.000   0.000  1.00  0.00           C  
+ATOM   1222  CA  SER A1222    4639.800   0.000   0.000  1.00  0.00           C  
+ATOM   1223  CA  GLY A1223    4643.600   0.000   0.000  1.00  0.00           C  
+ATOM   1224  CA  ASN A1224    4647.400   0.000   0.000  1.00  0.00           C  
+ATOM   1225  CA  SER A1225    4651.200   0.000   0.000  1.00  0.00           C  
+ATOM   1226  CA  TYR A1226    4655.000   0.000   0.000  1.00  0.00           C  
+ATOM   1227  CA  ASP A1227    4658.800   0.000   0.000  1.00  0.00           C  
+ATOM   1228  CA  ILE A1228    4662.600   0.000   0.000  1.00  0.00           C  
+ATOM   1229  CA  TYR A1229    4666.400   0.000   0.000  1.00  0.00           C  
+ATOM   1230  CA  ILE A1230    4670.200   0.000   0.000  1.00  0.00           C  
+ATOM   1231  CA  PRO A1231    4674.000   0.000   0.000  1.00  0.00           C  
+ATOM   1232  CA  SER A1232    4677.800   0.000   0.000  1.00  0.00           C  
+ATOM   1233  CA  HIS A1233    4681.600   0.000   0.000  1.00  0.00           C  
+ATOM   1234  CA  ILE A1234    4685.400   0.000   0.000  1.00  0.00           C  
+ATOM   1235  CA  GLN A1235    4689.200   0.000   0.000  1.00  0.00           C  
+ATOM   1236  CA  GLY A1236    4693.000   0.000   0.000  1.00  0.00           C  
+ATOM   1237  CA  ASN A1237    4696.800   0.000   0.000  1.00  0.00           C  
+ATOM   1238  CA  ILE A1238    4700.600   0.000   0.000  1.00  0.00           C  
+ATOM   1239  CA  THR A1239    4704.400   0.000   0.000  1.00  0.00           C  
+ATOM   1240  CA  PRO A1240    4708.200   0.000   0.000  1.00  0.00           C  
+ATOM   1241  CA  HIS A1241    4712.000   0.000   0.000  1.00  0.00           C  
+ATOM   1242  CA  ALA A1242    4715.800   0.000   0.000  1.00  0.00           C  
+ATOM   1243  CA  ILE A1243    4719.600   0.000   0.000  1.00  0.00           C  
+ATOM   1244  CA  VAL A1244    4723.400   0.000   0.000  1.00  0.00           C  
+ATOM   1245  CA  ILE A1245    4727.200   0.000   0.000  1.00  0.00           C  
+ATOM   1246  CA  LEU A1246    4731.000   0.000   0.000  1.00  0.00           C  
+ATOM   1247  CA  PRO A1247    4734.800   0.000   0.000  1.00  0.00           C  
+ATOM   1248  CA  LYS A1248    4738.600   0.000   0.000  1.00  0.00           C  
+ATOM   1249  CA  THR A1249    4742.400   0.000   0.000  1.00  0.00           C  
+ATOM   1250  CA  ASP A1250    4746.200   0.000   0.000  1.00  0.00           C  
+ATOM   1251  CA  GLY A1251    4750.000   0.000   0.000  1.00  0.00           C  
+ATOM   1252  CA  MET A1252    4753.800   0.000   0.000  1.00  0.00           C  
+ATOM   1253  CA  GLU A1253    4757.600   0.000   0.000  1.00  0.00           C  
+ATOM   1254  CA  MET A1254    4761.400   0.000   0.000  1.00  0.00           C  
+ATOM   1255  CA  LEU A1255    4765.200   0.000   0.000  1.00  0.00           C  
+ATOM   1256  CA  VAL A1256    4769.000   0.000   0.000  1.00  0.00           C  
+ATOM   1257  CA  CYS A1257    4772.800   0.000   0.000  1.00  0.00           C  
+ATOM   1258  CA  TYR A1258    4776.600   0.000   0.000  1.00  0.00           C  
+ATOM   1259  CA  GLU A1259    4780.400   0.000   0.000  1.00  0.00           C  
+ATOM   1260  CA  ASP A1260    4784.200   0.000   0.000  1.00  0.00           C  
+ATOM   1261  CA  GLU A1261    4788.000   0.000   0.000  1.00  0.00           C  
+ATOM   1262  CA  GLY A1262    4791.800   0.000   0.000  1.00  0.00           C  
+ATOM   1263  CA  VAL A1263    4795.600   0.000   0.000  1.00  0.00           C  
+ATOM   1264  CA  TYR A1264    4799.400   0.000   0.000  1.00  0.00           C  
+ATOM   1265  CA  VAL A1265    4803.200   0.000   0.000  1.00  0.00           C  
+ATOM   1266  CA  ASN A1266    4807.000   0.000   0.000  1.00  0.00           C  
+ATOM   1267  CA  THR A1267    4810.800   0.000   0.000  1.00  0.00           C  
+ATOM   1268  CA  TYR A1268    4814.600   0.000   0.000  1.00  0.00           C  
+ATOM   1269  CA  GLY A1269    4818.400   0.000   0.000  1.00  0.00           C  
+ATOM   1270  CA  ARG A1270    4822.200   0.000   0.000  1.00  0.00           C  
+ATOM   1271  CA  ILE A1271    4826.000   0.000   0.000  1.00  0.00           C  
+ATOM   1272  CA  THR A1272    4829.800   0.000   0.000  1.00  0.00           C  
+ATOM   1273  CA  LYS A1273    4833.600   0.000   0.000  1.00  0.00           C  
+ATOM   1274  CA  ASP A1274    4837.400   0.000   0.000  1.00  0.00           C  
+ATOM   1275  CA  VAL A1275    4841.200   0.000   0.000  1.00  0.00           C  
+ATOM   1276  CA  VAL A1276    4845.000   0.000   0.000  1.00  0.00           C  
+ATOM   1277  CA  LEU A1277    4848.800   0.000   0.000  1.00  0.00           C  
+ATOM   1278  CA  GLN A1278    4852.600   0.000   0.000  1.00  0.00           C  
+ATOM   1279  CA  TRP A1279    4856.400   0.000   0.000  1.00  0.00           C  
+ATOM   1280  CA  GLY A1280    4860.200   0.000   0.000  1.00  0.00           C  
+ATOM   1281  CA  GLU A1281    4864.000   0.000   0.000  1.00  0.00           C  
+ATOM   1282  CA  MET A1282    4867.800   0.000   0.000  1.00  0.00           C  
+ATOM   1283  CA  PRO A1283    4871.600   0.000   0.000  1.00  0.00           C  
+ATOM   1284  CA  THR A1284    4875.400   0.000   0.000  1.00  0.00           C  
+ATOM   1285  CA  SER A1285    4879.200   0.000   0.000  1.00  0.00           C  
+ATOM   1286  CA  VAL A1286    4883.000   0.000   0.000  1.00  0.00           C  
+ATOM   1287  CA  ALA A1287    4886.800   0.000   0.000  1.00  0.00           C  
+ATOM   1288  CA  TYR A1288    4890.600   0.000   0.000  1.00  0.00           C  
+ATOM   1289  CA  ILE A1289    4894.400   0.000   0.000  1.00  0.00           C  
+ATOM   1290  CA  HIS A1290    4898.200   0.000   0.000  1.00  0.00           C  
+ATOM   1291  CA  SER A1291    4902.000   0.000   0.000  1.00  0.00           C  
+ATOM   1292  CA  ASN A1292    4905.800   0.000   0.000  1.00  0.00           C  
+ATOM   1293  CA  GLN A1293    4909.600   0.000   0.000  1.00  0.00           C  
+ATOM   1294  CA  ILE A1294    4913.400   0.000   0.000  1.00  0.00           C  
+ATOM   1295  CA  MET A1295    4917.200   0.000   0.000  1.00  0.00           C  
+ATOM   1296  CA  GLY A1296    4921.000   0.000   0.000  1.00  0.00           C  
+ATOM   1297  CA  TRP A1297    4924.800   0.000   0.000  1.00  0.00           C  
+ATOM   1298  CA  GLY A1298    4928.600   0.000   0.000  1.00  0.00           C  
+ATOM   1299  CA  GLU A1299    4932.400   0.000   0.000  1.00  0.00           C  
+ATOM   1300  CA  LYS A1300    4936.200   0.000   0.000  1.00  0.00           C  
+ATOM   1301  CA  ALA A1301    4940.000   0.000   0.000  1.00  0.00           C  
+ATOM   1302  CA  ILE A1302    4943.800   0.000   0.000  1.00  0.00           C  
+ATOM   1303  CA  GLU A1303    4947.600   0.000   0.000  1.00  0.00           C  
+ATOM   1304  CA  ILE A1304    4951.400   0.000   0.000  1.00  0.00           C  
+ATOM   1305  CA  ARG A1305    4955.200   0.000   0.000  1.00  0.00           C  
+ATOM   1306  CA  SER A1306    4959.000   0.000   0.000  1.00  0.00           C  
+ATOM   1307  CA  VAL A1307    4962.800   0.000   0.000  1.00  0.00           C  
+ATOM   1308  CA  GLU A1308    4966.600   0.000   0.000  1.00  0.00           C  
+ATOM   1309  CA  THR A1309    4970.400   0.000   0.000  1.00  0.00           C  
+ATOM   1310  CA  GLY A1310    4974.200   0.000   0.000  1.00  0.00           C  
+ATOM   1311  CA  HIS A1311    4978.000   0.000   0.000  1.00  0.00           C  
+ATOM   1312  CA  LEU A1312    4981.800   0.000   0.000  1.00  0.00           C  
+ATOM   1313  CA  ASP A1313    4985.600   0.000   0.000  1.00  0.00           C  
+ATOM   1314  CA  GLY A1314    4989.400   0.000   0.000  1.00  0.00           C  
+ATOM   1315  CA  VAL A1315    4993.200   0.000   0.000  1.00  0.00           C  
+ATOM   1316  CA  PHE A1316    4997.000   0.000   0.000  1.00  0.00           C  
+ATOM   1317  CA  MET A1317    5000.800   0.000   0.000  1.00  0.00           C  
+ATOM   1318  CA  HIS A1318    5004.600   0.000   0.000  1.00  0.00           C  
+ATOM   1319  CA  LYS A1319    5008.400   0.000   0.000  1.00  0.00           C  
+ATOM   1320  CA  ARG A1320    5012.200   0.000   0.000  1.00  0.00           C  
+ATOM   1321  CA  ALA A1321    5016.000   0.000   0.000  1.00  0.00           C  
+ATOM   1322  CA  GLN A1322    5019.800   0.000   0.000  1.00  0.00           C  
+ATOM   1323  CA  ARG A1323    5023.600   0.000   0.000  1.00  0.00           C  
+ATOM   1324  CA  LEU A1324    5027.400   0.000   0.000  1.00  0.00           C  
+ATOM   1325  CA  LYS A1325    5031.200   0.000   0.000  1.00  0.00           C  
+ATOM   1326  CA  PHE A1326    5035.000   0.000   0.000  1.00  0.00           C  
+ATOM   1327  CA  LEU A1327    5038.800   0.000   0.000  1.00  0.00           C  
+ATOM   1328  CA  CYS A1328    5042.600   0.000   0.000  1.00  0.00           C  
+ATOM   1329  CA  GLU A1329    5046.400   0.000   0.000  1.00  0.00           C  
+ATOM   1330  CA  ARG A1330    5050.200   0.000   0.000  1.00  0.00           C  
+ATOM   1331  CA  ASN A1331    5054.000   0.000   0.000  1.00  0.00           C  
+ATOM   1332  CA  ASP A1332    5057.800   0.000   0.000  1.00  0.00           C  
+ATOM   1333  CA  LYS A1333    5061.600   0.000   0.000  1.00  0.00           C  
+ATOM   1334  CA  VAL A1334    5065.400   0.000   0.000  1.00  0.00           C  
+ATOM   1335  CA  PHE A1335    5069.200   0.000   0.000  1.00  0.00           C  
+ATOM   1336  CA  PHE A1336    5073.000   0.000   0.000  1.00  0.00           C  
+ATOM   1337  CA  ALA A1337    5076.800   0.000   0.000  1.00  0.00           C  
+ATOM   1338  CA  SER A1338    5080.600   0.000   0.000  1.00  0.00           C  
+ATOM   1339  CA  VAL A1339    5084.400   0.000   0.000  1.00  0.00           C  
+ATOM   1340  CA  ARG A1340    5088.200   0.000   0.000  1.00  0.00           C  
+ATOM   1341  CA  SER A1341    5092.000   0.000   0.000  1.00  0.00           C  
+ATOM   1342  CA  GLY A1342    5095.800   0.000   0.000  1.00  0.00           C  
+ATOM   1343  CA  GLY A1343    5099.600   0.000   0.000  1.00  0.00           C  
+ATOM   1344  CA  SER A1344    5103.400   0.000   0.000  1.00  0.00           C  
+ATOM   1345  CA  SER A1345    5107.200   0.000   0.000  1.00  0.00           C  
+ATOM   1346  CA  GLN A1346    5111.000   0.000   0.000  1.00  0.00           C  
+ATOM   1347  CA  VAL A1347    5114.800   0.000   0.000  1.00  0.00           C  
+ATOM   1348  CA  PHE A1348    5118.600   0.000   0.000  1.00  0.00           C  
+ATOM   1349  CA  PHE A1349    5122.400   0.000   0.000  1.00  0.00           C  
+ATOM   1350  CA  MET A1350    5126.200   0.000   0.000  1.00  0.00           C  
+ATOM   1351  CA  THR A1351    5130.000   0.000   0.000  1.00  0.00           C  
+ATOM   1352  CA  LEU A1352    5133.800   0.000   0.000  1.00  0.00           C  
+ATOM   1353  CA  ASN A1353    5137.600   0.000   0.000  1.00  0.00           C  
+ATOM   1354  CA  ARG A1354    5141.400   0.000   0.000  1.00  0.00           C  
+ATOM   1355  CA  ASN A1355    5145.200   0.000   0.000  1.00  0.00           C  
+ATOM   1356  CA  SER A1356    5149.000   0.000   0.000  1.00  0.00           C  
+ATOM   1357  CA  MET A1357    5152.800   0.000   0.000  1.00  0.00           C  
+ATOM   1358  CA  MET A1358    5156.600   0.000   0.000  1.00  0.00           C  
+ATOM   1359  CA  ASN A1359    5160.400   0.000   0.000  1.00  0.00           C  
+ATOM   1360  CA  TRP A1360    5164.200   0.000   0.000  1.00  0.00           C  
+END

@@ -1,0 +1,17 @@
+2025-05-18 16:41:53,047 Running colabfold 1.5.4
+2025-05-18 16:41:53,220 Unable to initialize backend 'rocm': NOT_FOUND: Could not find registered platform with name: "rocm". Available platform names are: CUDA
+2025-05-18 16:41:53,222 Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
+2025-05-18 16:41:55,214 Running on GPU
+2025-05-18 16:41:55,309 Found 2 citations for tools or databases
+2025-05-18 16:41:55,310 Query 1/1: seq (length 1297)
+2025-05-18 16:45:31,486 alphafold2_ptm_model_1_seed_000 recycle=0 pLDDT=26 pTM=0.237
+2025-05-18 16:46:20,458 alphafold2_ptm_model_1_seed_000 recycle=1 pLDDT=25.2 pTM=0.257 tol=20.7
+2025-05-18 16:47:09,626 alphafold2_ptm_model_1_seed_000 recycle=2 pLDDT=24.9 pTM=0.266 tol=15.6
+2025-05-18 16:47:58,875 alphafold2_ptm_model_1_seed_000 recycle=3 pLDDT=25.1 pTM=0.265 tol=12.5
+2025-05-18 16:47:58,877 alphafold2_ptm_model_1_seed_000 took 358.0s (3 recycles)
+2025-05-18 16:48:49,042 alphafold2_ptm_model_2_seed_000 recycle=0 pLDDT=30.1 pTM=0.231
+2025-05-18 16:49:38,353 alphafold2_ptm_model_2_seed_000 recycle=1 pLDDT=32 pTM=0.248 tol=33.1
+2025-05-18 16:50:27,675 alphafold2_ptm_model_2_seed_000 recycle=2 pLDDT=31.9 pTM=0.258 tol=25.4
+2025-05-18 16:51:16,993 alphafold2_ptm_model_2_seed_000 recycle=3 pLDDT=32.5 pTM=0.262 tol=10
+2025-05-18 16:51:16,995 alphafold2_ptm_model_2_seed_000 took 197.1s (3 recycles)
+2025-05-18 16:52:07,253 alphafold2_ptm_model_3_seed_000 recycle=0 pLDDT=20.8 pTM=0.214
