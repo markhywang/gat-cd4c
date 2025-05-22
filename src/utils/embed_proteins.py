@@ -17,7 +17,7 @@ python
 
    
 bash
-   python embed_proteins.py --dataset KIBA --out-dir ../data/protein_graphs \\
+   python src/utils/embed_proteins.py --dataset KIBA --out-dir data/protein_graphs \\
                             --num-workers 8 [--use-local-colabfold]
 
 
