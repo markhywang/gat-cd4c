@@ -523,7 +523,11 @@ class ProteinGraphBuilder:
         # Try loading with various approaches
         try:
             # First try with default settings
-            return torch.load(path, map_location="cpu", weights_only=False)
+            try:
+                return torch.load(path, map_location="cpu", weights_only=False)
+            except TypeError:
+                # weights_only parameter not available in this PyTorch version
+                return torch.load(path, map_location="cpu")
             
         except (RuntimeError, AttributeError) as e:
             error_str = str(e)
@@ -534,7 +538,11 @@ class ProteinGraphBuilder:
                     print("Attempting to register torch_geometric classes...")
                     register_torch_geometric_classes()
                     try:
-                        return torch.load(path, map_location="cpu", weights_only=False)
+                        try:
+                            return torch.load(path, map_location="cpu", weights_only=False)
+                        except TypeError:
+                            # weights_only parameter not available in this PyTorch version
+                            return torch.load(path, map_location="cpu")
                     except Exception as e2:
                         print(f"Second attempt failed: {e2}")
                 
@@ -695,15 +703,33 @@ def load_davis_mapping():
         data = DTI(name="DAVIS")
         df = data.get_data()
         
-        # Check if any entries look like UniProt IDs
-        uniprot_like = [t for t in df["Target"].unique() if looks_like_uniprot(t)]
+        processed_targets = []
+        raw_targets = df["Target"].unique()
+
+        for t_original in raw_targets:
+            if isinstance(t_original, list) and len(t_original) > 0:
+                processed_targets.append(str(t_original[0])) # Use the first element
+            else:
+                processed_targets.append(str(t_original))
+        
+        # Check for uniqueness of the processed simple names
+        if len(processed_targets) != len(set(processed_targets)):
+            print("WARNING: Non-unique simple protein names found in DAVIS after processing. This could lead to graph overwriting.")
+            # Potentially add more detailed logging of duplicates here if needed
+            # For now, we proceed with the (potentially non-unique) simple names
+
+        # The original logic for uniprot_like can be kept if desired, but apply it to processed_targets
+        uniprot_like = [pt for pt in set(processed_targets) if looks_like_uniprot(pt)]
         
         if uniprot_like:
-            print(f"Found {len(uniprot_like)} UniProt-like IDs in DAVIS dataset")
-            return uniprot_like
+            print(f"Found {len(uniprot_like)} UniProt-like simple IDs in DAVIS dataset from processed targets.")
+            # Decide if you want to return only uniprot_like or all processed_targets
+            # Returning all processed_targets for consistency with how train_new.py will expect them.
+            return sorted(list(set(processed_targets))) 
         else:
-            print("No UniProt IDs found in DAVIS dataset, using all targets")
-            return list(df["Target"].unique())
+            print("No UniProt IDs found in DAVIS dataset processed targets, using all unique processed targets.")
+            return sorted(list(set(processed_targets)))
+            
     except Exception as e:
         print(f"Error loading DAVIS dataset: {e}")
         return []
@@ -743,14 +769,25 @@ def main():
             print("Continuing with linear structure generation as fallback...")
     
     # Get targets based on dataset
+    targets = []
     if args.dataset == "DAVIS":
         targets = load_davis_mapping()
     elif args.dataset == "KIBA":
         from tdc.multi_pred import DTI
         data = DTI(name="KIBA")
         df = data.get_data()
-        targets = list(df["Target"].unique())
-        print(f"Found {len(targets)} targets in KIBA dataset")
+        raw_targets = list(df["Target"].unique())
+        processed_targets_kiba = []
+        for t_original in raw_targets:
+            if isinstance(t_original, list) and len(t_original) > 0:
+                processed_targets_kiba.append(str(t_original[0]))
+            else:
+                processed_targets_kiba.append(str(t_original))
+        
+        targets = sorted(list(set(processed_targets_kiba)))
+        if len(processed_targets_kiba) != len(targets):
+             print("WARNING: Non-unique simple protein names found in KIBA after processing. Using unique set.")
+        print(f"Found {len(targets)} unique simple targets in KIBA dataset")
     elif args.dataset == "CD4C":
         data_path = pathlib.Path("../data/filtered_cancer_all.csv")
         if not data_path.exists():

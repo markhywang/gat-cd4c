@@ -138,7 +138,8 @@ class GraphAttentionLayer(nn.Module):
         logits = logits.sum(dim=-1)
         logits = logits.masked_fill(adj.unsqueeze(-1) == 0, float("-inf"))
         logits = self.attn_leaky_relu(logits)
-        coeffs = F.softmax(logits, dim=2).nan_to_num_(0.0)
+        coeffs = F.softmax(logits, dim=2)
+        coeffs = torch.nan_to_num(coeffs, 0.0)
         return coeffs
 
     def _execute_message_passing(self, node_feats: Tensor, coeffs: Tensor, B: int, N: int) -> Tensor:

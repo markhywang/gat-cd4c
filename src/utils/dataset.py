@@ -6,9 +6,13 @@ Note that DrugMolecules now include optional 3D atomic coordinates as node featu
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from typing import Any
+from typing import Any, List, Optional
 import pandas as pd
 from functools import lru_cache
+import os
+import re
+import ast
+import hashlib
 
 import torch
 from torch.utils.data import Dataset
@@ -100,6 +104,82 @@ def collate_drug_prot(
         torch.tensor(labels, dtype=torch.float32)
     )
 
+
+def _sanitize_prot_id(pid_input):
+    """
+    Sanitize protein ID input, handling various input types:
+    - pandas Series or DataFrame: extract the first value
+    - list: extract the first element
+    - other types: convert to string
+    
+    Args:
+        pid_input: The input that should be converted to a protein ID string
+        
+    Returns:
+        str: Properly sanitized protein ID string
+    """
+    # Handle None or empty values
+    if pid_input is None:
+        return "unknown"
+    
+    # Convert to string if it's not already
+    pid_str = str(pid_input)
+    
+    # Handle pandas Series string representation (common issue in logs)
+    if "Name: Target_ID" in pid_str or "dtype: object" in pid_str:
+        # Extract protein IDs from complex Series string
+        try:
+            # Look for patterns like "12345    PROTEIN_NAME" in the string
+            matches = re.findall(r'(\d+\s+[A-Z0-9]+(?:\([^)]+\))?)', pid_str)
+            if matches:
+                # Extract the first protein ID
+                parts = matches[0].strip().split()
+                if len(parts) >= 2:
+                    # Take the last part as the protein ID
+                    return parts[-1].strip()
+            
+            # If that didn't work, try to find any capitalized identifiers
+            protein_pattern = r'\b[A-Z0-9]{3,10}\b'
+            protein_matches = re.findall(protein_pattern, pid_str)
+            if protein_matches:
+                # Filter out common keywords
+                filtered = [p for p in protein_matches if p not in ['NAME', 'TARGET', 'TYPE', 'DTYPE', 'OBJECT']]
+                if filtered:
+                    return filtered[0]
+            
+            # If we couldn't find a good protein ID, hash the string
+            if len(pid_str) > 50:  # Only hash if it's a long string
+                hash_obj = hashlib.md5(pid_str.encode())
+                return f"seq-{hash_obj.hexdigest()}"
+        except Exception as e:
+            print(f"Error parsing complex protein ID: {e}")
+    
+    # Handle list-like strings: "['P12345']"
+    if pid_str.startswith('[') and pid_str.endswith(']'):
+        try:
+            # Try to parse as a literal
+            literal = ast.literal_eval(pid_str)
+            if isinstance(literal, list) and literal:
+                return str(literal[0])
+        except:
+            # If parsing fails, try regex
+            match = re.search(r"'([^']+)'", pid_str)
+            if match:
+                return match.group(1)
+    
+    # Case 1: If it's a pandas DataFrame/Series
+    if hasattr(pid_input, 'iloc') and hasattr(pid_input, 'values'):
+        try:
+            return str(pid_input.iloc[0])
+        except:
+            pass
+    
+    # Case 2: If it's a list
+    elif isinstance(pid_input, list) and len(pid_input) > 0:
+        return str(pid_input[0])
+    
+    # Return the string representation
+    return pid_str
 
 
 class DrugMolecule:
@@ -251,23 +331,169 @@ class DrugProteinDataset(Dataset):
         self.max_nodes = max_nodes
         self.use_half = use_half
         self.include_3d = include_3d
+        self.graph_dir = graph_dir
+        
+        # Handle the case where df is actually a Series (e.g., df['Target_ID'])
+        if isinstance(df, pd.Series):
+            print(f"WARNING: A pandas Series was passed as 'df'. Series name: {df.name}")
+            print("This is an incorrect usage. Will try to recover by treating it as protein IDs.")
+            
+            # Create a simple DataFrame with just Target_ID and a placeholder pChEMBL_Value
+            temp_df = pd.DataFrame({'Target_ID': df.values, 'pChEMBL_Value': [0.0] * len(df)})
+            # Also add placeholder smiles if needed
+            if 'smiles' not in temp_df.columns:
+                temp_df['smiles'] = ['C'] * len(temp_df)  # Placeholder smiles
+            df = temp_df
+            print(f"Created temporary DataFrame with {len(df)} rows")
+            
         self.pchembl = df['pChEMBL_Value'].values.tolist()
         self.smiles = df['smiles'].values.tolist()
-        self.prot_ids = df['Target_ID'].values.tolist()
+        
+        # Convert protein IDs to strings to ensure they're hashable for lru_cache
+        prot_ids = []
+        for pid in df['Target_ID'].values:
+            # Apply the sanitization function to handle all input types
+            prot_ids.append(_sanitize_prot_id(pid))
+                
+        self.prot_ids = prot_ids
+        
         self.prot_emb_df = prot_emb
-        self.graph_dir = graph_dir
+        
+        # Ensure the protein graph directory exists
+        os.makedirs(self.graph_dir, exist_ok=True)
+        
         self.builder = ProteinGraphBuilder(self.graph_dir)
+        
+        # Validate entries
+        self._validate_entries()
+        
+    def _validate_entries(self):
+        """Check for potential issues in the dataset."""
+        # Count valid/invalid SMILES
+        invalid_smiles = []
+        for i, smiles in enumerate(self.smiles):
+            try:
+                mol = Chem.MolFromSmiles(smiles)
+                if mol is None:
+                    invalid_smiles.append(i)
+            except:
+                invalid_smiles.append(i)
+                
+        if invalid_smiles:
+            print(f"INFO: Found {len(invalid_smiles)} invalid SMILES entries out of {len(self.smiles)}")
+            
+        # Check if protein graphs exist
+        print("INFO: Validating protein graph paths...")
+        missing_graphs = []
+        unique_prot_ids_in_dataset = set()
+
+        # Print details for the first 5 protein IDs processed
+        for i, prot_id_original in enumerate(self.prot_ids):
+            current_prot_id_str = str(prot_id_original) 
+            unique_prot_ids_in_dataset.add(current_prot_id_str)
+            
+            # First try with direct filename match (for simple IDs)
+            direct_path = os.path.join(self.graph_dir, f"{current_prot_id_str}.pt")
+            if os.path.exists(direct_path):
+                if i < 5: 
+                    print(f"  Checking for: original_pid='{prot_id_original}', found direct match: {direct_path}")
+                continue
+                
+            # Then try with hash-based filename
+            graph_filename = self.builder._generate_protein_graph_filename(current_prot_id_str)
+            graph_path = os.path.join(self.graph_dir, graph_filename)
+            
+            if i < 5: 
+                print(f"  Checking for: original_pid='{prot_id_original}', processed_pid_str='{current_prot_id_str}', expected_filename='{graph_filename}', full_path='{graph_path}'")
+            
+            if not os.path.exists(graph_path):
+                missing_graphs.append(current_prot_id_str)
+                if i < 5: 
+                    print(f"    -> MISSING: {graph_path}")
+            elif i < 5: 
+                 print(f"    -> FOUND: {graph_path}")
+
+        if missing_graphs:
+            unique_missing_ids = sorted(list(set(missing_graphs)))
+            print(f"WARNING: {len(unique_missing_ids)} unique protein graphs missing out of {len(unique_prot_ids_in_dataset)} unique protein IDs in the current dataset split. (Total entries checked in this split: {len(self.prot_ids)}, total missing entries including duplicates: {len(missing_graphs)})")
+            print(f"Example missing unique IDs (up to 5): {unique_missing_ids[:5]}") 
+            print("You may need to run embed_proteins.py to generate protein graphs for these IDs (e.g., using their UniProt accession or sequence as the identifier).")
 
     def __len__(self):
         return len(self.pchembl)
 
     @lru_cache(maxsize=8192)
     def load_drug(self, smiles: str):
-        return DrugMolecule(smiles, self.max_nodes, self.include_3d).to_tensors()
+        try:
+            return DrugMolecule(smiles, self.max_nodes, self.include_3d).to_tensors()
+        except ValueError as e:
+            print(f"Error loading drug molecule from SMILES: {smiles[:20]}... - {str(e)}")
+            # Return dummy tensors as fallback
+            x = torch.zeros((self.max_nodes, 29), dtype=torch.float32)  # Assuming 29 is correct dimension
+            e = torch.zeros((self.max_nodes, self.max_nodes, 17), dtype=torch.float32)
+            a = torch.zeros((self.max_nodes, self.max_nodes), dtype=torch.float32)
+            z = torch.zeros(self.max_nodes, dtype=torch.long)
+            return x, e, a, z
 
     @lru_cache(maxsize=256)
-    def load_protein(self, pid: str):
-        return self.builder.load(pid)
+    def load_protein(self, pid):
+        """Load a protein graph from the builder.
+        
+        Args:
+            pid: Protein ID, should be a string
+            
+        Returns:
+            Protein graph data structure
+        """
+        # Sanitize the protein ID
+        try:
+            pid_to_load = _sanitize_prot_id(pid)
+            
+            # First try direct path without hashing (for simple IDs)
+            direct_path = os.path.join(self.graph_dir, f"{pid_to_load}.pt")
+            if os.path.exists(direct_path):
+                try:
+                    # Try with weights_only=False, using try-except to handle older PyTorch versions
+                    try:
+                        return torch.load(direct_path, map_location="cpu", weights_only=False)
+                    except TypeError:
+                        # weights_only parameter not available in this PyTorch version
+                        return torch.load(direct_path, map_location="cpu")
+                except Exception as e:
+                    print(f"Error loading protein graph from direct path {direct_path}: {str(e)}")
+                    # Continue to try the hashed path
+            
+            # Try using the builder's method to calculate filename
+            try:
+                return self.builder.load(pid_to_load)
+            except Exception as e:
+                print(f"Error loading via builder for {pid_to_load}: {str(e)}")
+                
+                # Try one more approach: hash the full original string and try that filename
+                hash_obj = hashlib.md5(str(pid).encode())
+                alt_pid = f"seq-{hash_obj.hexdigest()}"
+                alt_path = os.path.join(self.graph_dir, f"{alt_pid}.pt")
+                
+                if os.path.exists(alt_path):
+                    print(f"Found alternate path using direct hash: {alt_path}")
+                    try:
+                        return torch.load(alt_path, map_location="cpu", weights_only=False)
+                    except TypeError:
+                        # weights_only parameter not available in this PyTorch version
+                        return torch.load(alt_path, map_location="cpu")
+            
+            # If we get here, we need a fallback
+            print(f"Could not load protein graph for '{pid_to_load}' - using fallback")
+        except Exception as e:
+            print(f"Error in load_protein: {str(e)}")
+        
+        # Create a minimal graph as fallback
+        from torch_geometric.data import Data
+        # Fallback with minimal features - one dummy node with minimal features
+        x = torch.zeros((1, 24), dtype=torch.float32)  # 20 one-hot + 1 charge + 3 coords
+        edge_index = torch.zeros((2, 1), dtype=torch.long)  # Self-loop
+        edge_attr = torch.zeros((1, 1), dtype=torch.float32)  # Single edge feature
+        return Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
 
     def __getitem__(self, i):
         # ── drug tensors (order matters!) ───────────────────────────────

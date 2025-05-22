@@ -22,7 +22,10 @@ try:
     from utils.helper_functions import (
         set_seeds,
         count_params,
-        try_run
+        try_run,
+        mse_func,
+        mae_func,
+        accuracy_func
     )
 except ImportError:
     # For when the module is imported from outside
@@ -48,6 +51,9 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
     pre‑built protein *graphs* (``protein_graphs/<ID>.pt``) created by the
     revised **embed_proteins.py** utility.
     """
+    # Add anomaly detection to help identify gradient computation issues
+    torch.autograd.set_detect_anomaly(True)
+
     set_seeds(args.seed)
     device = m_device
 
@@ -82,11 +88,14 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         protein_graph_dir=args.protein_graph_dir,
         dataset=args.dataset,
     )
+    
+    # Use getattr with a default value for num_workers
+    num_workers = getattr(args, 'num_workers', min(os.cpu_count() or 1, 8))
 
     ctx = mp.get_context("spawn")
     loader_kwargs = dict(
         batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        num_workers=num_workers,
         pin_memory=(device.type == "cuda"),
         persistent_workers=True,
         multiprocessing_context=ctx,
@@ -255,14 +264,50 @@ def load_data(
 
     if dataset.upper() in {"KIBA", "DAVIS"}:
         # --- pull from TDC --------------------------------------------------
-        from tdc.multi_pred import DTI
-
-        data = DTI(name=dataset.upper())
-        split = data.get_split("random", seed=seed, frac=[frac_train, frac_val, frac_test])
-        tr, val, te = split["train"], split["valid"], split["test"]
+        # Ensure data_path exists
+        os.makedirs(data_path, exist_ok=True)
+        
+        # Check if we already have the dataset cached
+        dataset_name = dataset.upper()
+        dataset_file = os.path.join(data_path, f"{dataset_name}_dataset.csv")
+        
+        if os.path.exists(dataset_file):
+            print(f"Loading {dataset_name} dataset from cache: {dataset_file}")
+            df = pd.read_csv(dataset_file)
+            
+            # Apply stratified split to cached data
+            df["strat"] = pd.qcut(df["Y"], 10, duplicates="drop", labels=False)
+            tr, rem = train_test_split(df, test_size=frac_val + frac_test, 
+                                      stratify=df["strat"], random_state=seed)
+            val, te = train_test_split(rem, test_size=frac_test / (frac_val + frac_test), 
+                                      stratify=rem["strat"], random_state=seed)
+            tr, val, te = map(lambda d: d.drop(columns="strat"), (tr, val, te))
+            
+        else:
+            print(f"Downloading {dataset_name} dataset from TDC")
+            from tdc.multi_pred import DTI
+            data = DTI(name=dataset_name, path=data_path)
+            # Cache the raw dataset for future use
+            data.get_data().to_csv(dataset_file, index=False)
+            
+            split = data.get_split("random", seed=seed, frac=[frac_train, frac_val, frac_test])
+            tr, val, te = split["train"], split["valid"], split["test"]
+        
+        # Rename columns to match our expected format
         for df in (tr, val, te):
             df.rename(columns={"Drug": "smiles", "Target": "Target_ID", "Y": "pChEMBL_Value"}, inplace=True)
 
+            # Ensure Target_ID is a clean string, not a list or complex object
+            if isinstance(df["Target_ID"].iloc[0], list):
+                # If Target_ID contains lists, take the first element
+                df["Target_ID"] = df["Target_ID"].apply(lambda x: str(x[0]) if isinstance(x, list) else str(x))
+            else:
+                # Convert all Target_IDs to strings 
+                df["Target_ID"] = df["Target_ID"].astype(str)
+
+            # Clean Target_ID strings - remove any potential problematic characters
+            df["Target_ID"] = df["Target_ID"].apply(lambda x: x.strip() if isinstance(x, str) else str(x))
+            
         tr, val, te = map(_keep_cols, (tr, val, te))
         prot_emb = pd.DataFrame()  # <- not used with graph‑only pathway
 
@@ -276,10 +321,17 @@ def load_data(
         val, te = train_test_split(rem, test_size=frac_test / (frac_val + frac_test), stratify=rem["strat"], random_state=seed)
         tr, val, te = map(lambda d: d.drop(columns="strat"), (tr, val, te))
         tr, val, te = map(_keep_cols, (tr, val, te))
+        
+        # Also ensure Target_ID is a clean string for CD4C dataset
+        for df in (tr, val, te):
+            df["Target_ID"] = df["Target_ID"].astype(str).apply(lambda x: x.strip())
 
         # although *not* used, we keep reading to satisfy constructor sign.↵
         prot_emb = pd.read_csv(f"{data_path}/protein_embeddings.csv", index_col=0)
 
+    # Ensure protein_graph_dir exists
+    os.makedirs(protein_graph_dir, exist_ok=True)
+    
     train_ds = DrugProteinDataset(tr, prot_emb, protein_graph_dir)
     val_ds = DrugProteinDataset(val, prot_emb, protein_graph_dir)
     test_ds = DrugProteinDataset(te, prot_emb, protein_graph_dir)

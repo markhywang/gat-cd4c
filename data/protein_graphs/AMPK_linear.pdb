@@ -1,0 +1,7 @@
+HEADER    LINEAR STRUCTURE (FALLBACK)              
+TITLE     LINEAR STRUCTURE FOR AMPK              
+ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00  0.00           C  
+ATOM      2  CA  MET A   2       3.800   0.000   0.000  1.00  0.00           C  
+ATOM      3  CA  PRO A   3       7.600   0.000   0.000  1.00  0.00           C  
+ATOM      4  CA  LYS A   4      11.400   0.000   0.000  1.00  0.00           C  
+END

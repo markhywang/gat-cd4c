@@ -1,0 +1,6 @@
+HEADER    LINEAR STRUCTURE (FALLBACK)              
+TITLE     LINEAR STRUCTURE FOR IKK              
+ATOM      1  CA  ILE A   1       0.000   0.000   0.000  1.00  0.00           C  
+ATOM      2  CA  LYS A   2       3.800   0.000   0.000  1.00  0.00           C  
+ATOM      3  CA  LYS A   3       7.600   0.000   0.000  1.00  0.00           C  
+END
