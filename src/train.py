@@ -25,7 +25,9 @@ try:
         try_run,
         mse_func,
         mae_func,
-        accuracy_func
+        accuracy_func,
+        concordance_index,
+        transform_davis_score
     )
 except ImportError:
     # For when the module is imported from outside
@@ -147,8 +149,8 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
     columns = [
         "train_loss",
         "validation_loss",
-        "train_acc",
-        "validation_acc",
+        "train_ci",
+        "validation_ci",
         "train_mse",
         "validation_mse",
         "train_mae",
@@ -254,8 +256,11 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
 
 def get_validation_metrics(loader, model, loss_func, device):
     model.eval()
-    totals = dict(loss=0.0, acc=0.0, mse=0.0, mae=0.0)
+    totals = dict(loss=0.0, ci=0.0, mse=0.0, mae=0.0)
     seen = 0
+    all_preds = []
+    all_labels = []
+    
     with torch.no_grad():
         for batch in loader:
             try:
@@ -278,9 +283,12 @@ def get_validation_metrics(loader, model, loss_func, device):
                 n = labels.size(0)
                 seen += n
                 totals["loss"] += loss_val * n
-                totals["acc"] += accuracy_func(preds, labels, 1.0)
                 totals["mse"] += mse_func(preds, labels) * n
                 totals["mae"] += mae_func(preds, labels) * n
+                
+                # Collect predictions and labels for CI calculation
+                all_preds.extend(preds.cpu().tolist())
+                all_labels.extend(labels.cpu().tolist())
                 
             except RuntimeError as e:
                 print(f"Runtime error in validation batch: {str(e)}")
@@ -291,9 +299,13 @@ def get_validation_metrics(loader, model, loss_func, device):
         print("Warning: No valid samples in validation set!")
         return float('inf'), 0.0, float('inf'), float('inf')
 
+    # Calculate CI using all predictions and labels
+    ci = concordance_index(torch.tensor(all_preds), torch.tensor(all_labels))
+    totals["ci"] = ci * seen
+
     return (
         totals["loss"] / seen,
-        totals["acc"] / seen,
+        totals["ci"] / seen,
         totals["mse"] / seen,
         totals["mae"] / seen,
     )
@@ -355,6 +367,10 @@ def load_data(
         # Rename columns to match our expected format
         for df in (tr, val, te):
             df.rename(columns={"Drug": "smiles", "Target": "Target_ID", "Y": "pChEMBL_Value"}, inplace=True)
+
+            # Transform DAVIS scores using -log(x/10^9)
+            if dataset_name == "DAVIS":
+                df["pChEMBL_Value"] = df["pChEMBL_Value"].apply(transform_davis_score)
 
             # Ensure Target_ID is a clean string, not a list or complex object
             if isinstance(df["Target_ID"].iloc[0], list):

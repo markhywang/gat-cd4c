@@ -467,6 +467,52 @@ def try_run(func, *args, **kwargs):
         return None
 
 
+def concordance_index(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
+    """Calculate the concordance index (CI) between predictions and true values.
+    
+    The concordance index measures the probability that for a randomly selected pair of samples,
+    the sample with the higher prediction value has the higher true value.
+    
+    Args:
+        y_pred (torch.Tensor): Predicted values
+        y_true (torch.Tensor): True values
+        
+    Returns:
+        float: The concordance index, a value between 0 and 1
+    """
+    n_samples = len(y_true)
+    pairs = 0
+    concordant = 0
+    
+    # Convert to numpy for easier comparison operations
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.detach().cpu().numpy()
+    
+    for i in range(n_samples):
+        for j in range(i + 1, n_samples):
+            if y_true[i] != y_true[j]:  # Only consider pairs with different true values
+                pairs += 1
+                if (y_true[i] > y_true[j] and y_pred[i] > y_pred[j]) or \
+                   (y_true[i] < y_true[j] and y_pred[i] < y_pred[j]):
+                    concordant += 1
+    
+    return concordant / pairs if pairs > 0 else 0.0
+
+
+def transform_davis_score(x: float) -> float:
+    """Transform DAVIS dataset Kd values using -log(x/10^9) as specified in the paper.
+    
+    Args:
+        x (float): The original Kd value in nM
+        
+    Returns:
+        float: The transformed score
+    """
+    return -np.log10(x / 1e9)
+
+
 if __name__ == "__main__":
     # import doctest
     # doctest.testmod()
