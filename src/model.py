@@ -136,10 +136,23 @@ class GraphAttentionLayer(nn.Module):
         concat = torch.cat((row, col, edge), dim=4)
         logits = concat @ self.attn_matrix.T
         logits = logits.sum(dim=-1)
-        logits = logits.masked_fill(adj.unsqueeze(-1) == 0, float("-inf"))
+        
+        # Use a large negative value instead of -inf for numerical stability
+        mask_value = -1e9  # A large negative number instead of -inf
+        logits = logits.masked_fill(adj.unsqueeze(-1) == 0, mask_value)
+        
+        # Apply LeakyReLU and clip for numerical stability
         logits = self.attn_leaky_relu(logits)
+        
+        # Clamp values to prevent extreme values going into softmax
+        logits = torch.clamp(logits, min=-1e9, max=1e9)
+        
+        # Apply softmax and handle NaNs
         coeffs = F.softmax(logits, dim=2)
+        
+        # Replace any remaining NaNs with zeros
         coeffs = torch.nan_to_num(coeffs, 0.0)
+        
         return coeffs
 
     def _execute_message_passing(self, node_feats: Tensor, coeffs: Tensor, B: int, N: int) -> Tensor:

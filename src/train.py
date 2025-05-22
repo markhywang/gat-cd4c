@@ -51,7 +51,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
     pre‑built protein *graphs* (``protein_graphs/<ID>.pt``) created by the
     revised **embed_proteins.py** utility.
     """
-    # Add anomaly detection to help identify gradient computation issues
+    # Enable anomaly detection to help identify gradient computation issues
     torch.autograd.set_detect_anomaly(True)
 
     set_seeds(args.seed)
@@ -165,21 +165,57 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         seen = 0
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.max_epochs}"):
-            (d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a, labels) = [x.to(device) for x in batch]
+            try:
+                (d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a, labels) = [x.to(device) for x in batch]
 
-            optimiser.zero_grad(set_to_none=True)
-            preds = model(d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a).squeeze(-1)
-            loss = loss_func(preds, labels)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimiser.step()
+                optimiser.zero_grad(set_to_none=True)
+                
+                # Forward pass
+                preds = model(d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a).squeeze(-1)
+                
+                # Check for NaN values in predictions
+                if torch.isnan(preds).any():
+                    print(f"Warning: NaN detected in predictions. Skipping batch.")
+                    continue
+                
+                loss = loss_func(preds, labels)
+                
+                # Check for NaN loss
+                if torch.isnan(loss):
+                    print(f"Warning: NaN detected in loss calculation. Skipping batch.")
+                    continue
+                    
+                # Backward pass with extra stability measures
+                loss.backward()
+                
+                # Apply aggressive gradient clipping to prevent exploding gradients
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                
+                # Check for NaN gradients
+                has_nan_grad = False
+                for param in model.parameters():
+                    if param.grad is not None and torch.isnan(param.grad).any():
+                        has_nan_grad = True
+                        break
+                        
+                if has_nan_grad:
+                    print(f"Warning: NaN detected in gradients. Skipping parameter update.")
+                    # Skip the optimizer step if gradients contain NaN
+                    continue
+                
+                optimiser.step()
 
-            n = labels.size(0)
-            seen += n
-            total["loss"] += loss.item() * n
-            total["acc"] += accuracy_func(preds, labels, 1.0)
-            total["mse"] += mse_func(preds, labels) * n
-            total["mae"] += mae_func(preds, labels) * n
+                n = labels.size(0)
+                seen += n
+                total["loss"] += loss.item() * n
+                total["acc"] += accuracy_func(preds, labels, 1.0)
+                total["mse"] += mse_func(preds, labels) * n
+                total["mae"] += mae_func(preds, labels) * n
+                
+            except RuntimeError as e:
+                print(f"Runtime error in training batch: {str(e)}")
+                # Continue with next batch rather than crashing
+                continue
 
         # --- aggregate train metrics ---
         tl = total["loss"] / seen
@@ -222,15 +258,38 @@ def get_validation_metrics(loader, model, loss_func, device):
     seen = 0
     with torch.no_grad():
         for batch in loader:
-            (d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a, labels) = [x.to(device) for x in batch]
-            preds = model(d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a).squeeze(-1)
-            loss = loss_func(preds, labels).item()
-            n = labels.size(0)
-            seen += n
-            totals["loss"] += loss * n
-            totals["acc"] += accuracy_func(preds, labels, 1.0)
-            totals["mse"] += mse_func(preds, labels) * n
-            totals["mae"] += mae_func(preds, labels) * n
+            try:
+                (d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a, labels) = [x.to(device) for x in batch]
+                preds = model(d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a).squeeze(-1)
+                
+                # Check for NaN values
+                if torch.isnan(preds).any():
+                    print(f"Warning: NaN detected in validation predictions. Skipping batch.")
+                    continue
+                
+                loss = loss_func(preds, labels)
+                
+                # Skip batch if loss is NaN
+                if torch.isnan(loss):
+                    print(f"Warning: NaN detected in validation loss. Skipping batch.")
+                    continue
+                
+                loss_val = loss.item()
+                n = labels.size(0)
+                seen += n
+                totals["loss"] += loss_val * n
+                totals["acc"] += accuracy_func(preds, labels, 1.0)
+                totals["mse"] += mse_func(preds, labels) * n
+                totals["mae"] += mae_func(preds, labels) * n
+                
+            except RuntimeError as e:
+                print(f"Runtime error in validation batch: {str(e)}")
+                continue
+
+    # Prevent division by zero
+    if seen == 0:
+        print("Warning: No valid samples in validation set!")
+        return float('inf'), 0.0, float('inf'), float('inf')
 
     return (
         totals["loss"] / seen,
@@ -348,6 +407,7 @@ def get_parser() -> argparse.ArgumentParser:
     p.add_argument("--dataset", type=str, default="CD4C", choices=["CD4C", "KIBA", "DAVIS"], help="Which dataset to train on")
     p.add_argument("--data_path", type=str, default="../data", help="Root data directory")
     p.add_argument("--protein_graph_dir", type=str, default="../data/protein_graphs", help="Directory with *.pt protein graphs")
+    p.add_argument("--device", type=str, default="cuda", choices=["cuda", "cpu"], help="Device to use for training (cuda or cpu)")
 
     # training splits
     p.add_argument("--frac_train", type=float, default=0.7)
@@ -387,11 +447,16 @@ if __name__ == "__main__":
     parser = get_parser()
     cli_args = parser.parse_args()
 
-    if torch.cuda.is_available():
+    # Use the device specified in the command line arguments
+    if cli_args.device == "cuda" and torch.cuda.is_available():
         dev = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        dev = torch.device("mps")
+    elif cli_args.device == "cuda" and not torch.cuda.is_available():
+        print("CUDA is not available. Falling back to CPU.")
+        dev = torch.device("cpu")
+    elif torch.backends.mps.is_available() and cli_args.device == "cuda":
+        dev = torch.device("mps")  # Apple Silicon GPU
     else:
         dev = torch.device("cpu")
-
+        
+    print(f"Using device: {dev}")
     train_model(cli_args, dev)

@@ -453,7 +453,7 @@ class DrugProteinDataset(Dataset):
             direct_path = os.path.join(self.graph_dir, f"{pid_to_load}.pt")
             if os.path.exists(direct_path):
                 try:
-                    # Try with weights_only=False, using try-except to handle older PyTorch versions
+                    # Try with weights_only=False using try-except to handle older PyTorch versions
                     try:
                         return torch.load(direct_path, map_location="cpu", weights_only=False)
                     except TypeError:
@@ -463,33 +463,34 @@ class DrugProteinDataset(Dataset):
                     print(f"Error loading protein graph from direct path {direct_path}: {str(e)}")
                     # Continue to try the hashed path
             
-            # Try using the builder's method to calculate filename
-            try:
-                return self.builder.load(pid_to_load)
-            except Exception as e:
-                print(f"Error loading via builder for {pid_to_load}: {str(e)}")
-                
-                # Try one more approach: hash the full original string and try that filename
-                hash_obj = hashlib.md5(str(pid).encode())
-                alt_pid = f"seq-{hash_obj.hexdigest()}"
-                alt_path = os.path.join(self.graph_dir, f"{alt_pid}.pt")
-                
-                if os.path.exists(alt_path):
-                    print(f"Found alternate path using direct hash: {alt_path}")
+            # Try using hashed filename
+            hashed_pid = hashlib.md5(pid_to_load.encode()).hexdigest()
+            hashed_path = os.path.join(self.graph_dir, f"{hashed_pid}.pt")
+            if os.path.exists(hashed_path):
+                try:
                     try:
-                        return torch.load(alt_path, map_location="cpu", weights_only=False)
+                        return torch.load(hashed_path, map_location="cpu", weights_only=False)
                     except TypeError:
-                        # weights_only parameter not available in this PyTorch version
-                        return torch.load(alt_path, map_location="cpu")
+                        return torch.load(hashed_path, map_location="cpu")
+                except Exception as e:
+                    print(f"Error loading protein graph from hashed path {hashed_path}: {str(e)}")
             
-            # If we get here, we need a fallback
-            print(f"Could not load protein graph for '{pid_to_load}' - using fallback")
+            print(f"Warning: Could not find protein graph for ID: {pid_to_load}")
+            # Create a dummy protein graph for proteins not found
+            return self._create_dummy_protein_graph()
+            
         except Exception as e:
             print(f"Error in load_protein: {str(e)}")
+            return self._create_dummy_protein_graph()
+
+    def _create_dummy_protein_graph(self):
+        """Create a minimal graph as fallback for missing protein graphs.
         
-        # Create a minimal graph as fallback
+        Returns:
+            Data: A minimal protein graph with dummy features
+        """
         from torch_geometric.data import Data
-        # Fallback with minimal features - one dummy node with minimal features
+        # Create a minimal graph with one dummy node and minimal features
         x = torch.zeros((1, 24), dtype=torch.float32)  # 20 one-hot + 1 charge + 3 coords
         edge_index = torch.zeros((2, 1), dtype=torch.long)  # Self-loop
         edge_attr = torch.zeros((1, 1), dtype=torch.float32)  # Single edge feature
