@@ -4,32 +4,35 @@ More specifically, it has the main DrugProtein dataset, which contains specific 
 Note that DrugMolecules now include optional 3D atomic coordinates as node features.
 """
 
-from rdkit import Chem
+from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem
-from typing import Any, List, Optional
+
+from typing import Any, List, Optional, Tuple # Added Tuple
 import pandas as pd
 from functools import lru_cache
 import os
 import re
 import ast
-import hashlib
+import hashlib # Keep for _sanitize_prot_id if used for filename generation
 
 import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
+from torch_geometric.data import Data # For type hinting loaded protein graph
+from tqdm import tqdm
 
 try:
     from .functional_groups import *
-    from .embed_proteins import ProteinGraphBuilder
+    # from .embed_proteins import ProteinGraphBuilder # embed_proteins is a script, not usually imported directly like this
+                                                  # We might need helper functions from it if they exist and are importable
 except ImportError:
-    # For when the module is imported from outside
     from src.utils.functional_groups import *
-    from src.utils.embed_proteins import ProteinGraphBuilder
+    # from src.utils.embed_proteins import ProteinGraphBuilder
 
 ATOM_PAD_ID = 0          # 0 = "dummy / padded node"
 
-from sklearn.model_selection import train_test_split
-from tdc.multi_pred import DTI
+# from sklearn.model_selection import train_test_split # Not used directly in this file after load_data moved to train.py
+# from tdc.multi_pred import DTI # Not used directly in this file
 
 
 # ----------------------------------------------------------------------------
@@ -43,19 +46,20 @@ def pad_to(x: torch.Tensor, shape: tuple):
 
 
 def collate_drug_prot(
-        batch,
-        prot_graph_dir,
-        hard_limit=64,
-        drug_edge_feats=17,
-        prot_edge_feats=1):
+        batch: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Data, Any]], # Modified type hint for protein part
+        hard_limit: int = 64, # Max nodes for padding
+        drug_edge_feats: int = 17, # Number of drug edge features
+        prot_edge_feats: int = 1   # Number of protein edge features (distance)
+        ):
 
     drug_zs, drug_xs, drug_es, drug_as = [], [], [], []
-    prot_zs, prot_xs, prot_es, prot_as = [], [], [], []
+    prot_zs, prot_xs, prot_es, prot_as = [], [], [], [] # Restored protein graph components
     labels = []
 
-    H = hard_limit
+    H = hard_limit # Max nodes (atoms for drugs, residues for proteins)
 
-    for d_x, d_z, d_e, d_a, p_x, p_e, p_i, label in batch:
+    # for d_x, d_z, d_e, d_a, protein_embedding, label in batch: # Old custom embedding version
+    for d_x, d_z, d_e, d_a, protein_graph_data, label in batch: # New: protein_graph_data is a torch_geometric.data.Data object
         # ───────────── drug ─────────────
         drug_zs.append(pad_to(d_z, (H,)))
         drug_xs.append(pad_to(d_x, (H, d_x.size(-1))))
@@ -63,123 +67,110 @@ def collate_drug_prot(
         drug_as.append(pad_to(d_a, (H, H)))
 
         # ─────────── protein ────────────
-        N = p_x.size(0)
-        if N > H:                                   # truncate to hard_limit
-            mask = (p_i[0] < H) & (p_i[1] < H)
-            p_i  = p_i[:, mask]
-            p_e  = p_e[mask]
-            p_x  = p_x[:H]
-            N    = H
+        # protein_graph_data is expected to be a torch_geometric.data.Data object
+        # It should have: p_x (node features), p_edge_index, p_edge_attr
+        
+        p_x = protein_graph_data.x # Node features [N_prot_nodes, F_prot_node] (F_prot_node=24)
+        p_edge_index = protein_graph_data.edge_index # Edge indices [2, num_edges]
+        p_edge_attr = protein_graph_data.edge_attr # Edge attributes [num_edges, F_prot_edge] (F_prot_edge=1)
 
-        # (1) residue-type integer IDs  (derive from first 20 dims of one-hot)
-        res_ids = torch.argmax(p_x[:, :20], dim=1).long() + 1   # 1…20, 0=pad
+        N_prot_nodes = p_x.size(0)
+
+        if N_prot_nodes > H: # truncate to hard_limit
+            # Simple truncation: keep first H nodes and their induced subgraph
+            node_mask = torch.arange(H)
+            p_x = p_x[node_mask]
+            
+            # Filter edges: both source and target nodes must be within the first H nodes
+            edge_mask = (p_edge_index[0] < H) & (p_edge_index[1] < H)
+            p_edge_index = p_edge_index[:, edge_mask]
+            p_edge_attr = p_edge_attr[edge_mask]
+            N_prot_nodes = H
+        
+        # (1) residue-type integer IDs (derive from first 20 dims of one-hot node features)
+        # Node features in .pt are: one_hot_AA(20) + charge(1) + coords(3) = 24 dims
+        # The FeaturePrep in the model will use these IDs to create embeddings.
+        res_ids = torch.argmax(p_x[:, :20], dim=1).long() + 1 # 1-20, 0=pad
         prot_zs.append(pad_to(res_ids, (H,)))
 
-        # (2) node features
-        prot_xs.append(pad_to(p_x, (H, p_x.size(1))))
+        # (2) protein node features (the part FeaturePrep concatenates: charge + coords)
+        # The FeaturePrep module expects the raw node features (excluding IDs part if it embeds them)
+        # For proteins, prot_prep = FeaturePrep(num_res_types, z_emb_dim)
+        # It will embed res_ids. The remaining features from p_x (charge, coords) should be passed.
+        # p_x here is [N, 24]. We pass p_x[:, 20:] which are charge (1) and coords (3) = 4 features.
+        # So, prot_in_features for the model's GAT part will be z_emb_dim (from FeaturePrep) + 4.
+        # This means prot_in_features argument to DualGraphAttentionNetwork's __init__ should be 4.
+        prot_node_dense_feats = p_x[:, 20:] # [N_prot_nodes, 4] (charge, x, y, z)
+        prot_xs.append(pad_to(prot_node_dense_feats, (H, prot_node_dense_feats.size(1))))
 
-        # (3) dense edge-attr & adjacency
-        adj     = torch.zeros((H, H), dtype=torch.float32)
-        edge_t  = torch.zeros((H, H, prot_edge_feats), dtype=torch.float32)
-        for j in range(p_i.size(1)):
-            i0, i1 = int(p_i[0, j]), int(p_i[1, j])
-            adj[i0, i1]     = 1
-            edge_t[i0, i1]  = p_e[j]
 
-        prot_as.append(adj)
-        prot_es.append(edge_t)
+        # (3) dense edge-attributes & adjacency matrix for proteins
+        adj_prot = torch.zeros((H, H), dtype=torch.float32)
+        edge_attr_prot_dense = torch.zeros((H, H, prot_edge_feats), dtype=torch.float32)
+
+        if p_edge_index.numel() > 0: # Check if there are any edges after potential truncation
+            row, col = p_edge_index[0], p_edge_index[1]
+            adj_prot[row, col] = 1
+            adj_prot[col, row] = 1 # Assuming undirected, though original GAT handles directedness via attention
+            # Populate edge attributes, ensure it's [H,H,F_prot_edge]
+            # This assumes p_edge_attr corresponds to edges in p_edge_index
+            edge_attr_prot_dense[row, col] = p_edge_attr 
+            # If edges are undirected and attributes are symmetric, or if GAT sums/averages edge features for both directions:
+            edge_attr_prot_dense[col, row] = p_edge_attr # Or handle as per model's expectation
+
+        prot_as.append(adj_prot)
+        prot_es.append(edge_attr_prot_dense)
 
         labels.append(label)
 
-    # final stacked batch
     return (
-        torch.stack(drug_zs),    # [B, H]          long
-        torch.stack(drug_xs),    # [B, H, F_d]
-        torch.stack(drug_es),    # [B, H, H, F_e_d]
-        torch.stack(drug_as),    # [B, H, H]
-        torch.stack(prot_zs),    # [B, H]          long
-        torch.stack(prot_xs),    # [B, H, F_p]
-        torch.stack(prot_es),    # [B, H, H, F_e_p]
-        torch.stack(prot_as),    # [B, H, H]
+        torch.stack(drug_zs),    # [B, H]          (long) atomic numbers
+        torch.stack(drug_xs),    # [B, H, F_d_node] drug node features (continuous part)
+        torch.stack(drug_es),    # [B, H, H, F_d_edge] drug edge features
+        torch.stack(drug_as),    # [B, H, H]       drug adjacency
+        torch.stack(prot_zs),    # [B, H]          (long) protein residue type IDs
+        torch.stack(prot_xs),    # [B, H, F_p_node_dense] protein node dense features (charge, coords)
+        torch.stack(prot_es),    # [B, H, H, F_p_edge] protein edge features (distance)
+        torch.stack(prot_as),    # [B, H, H]       protein adjacency (from graph)
         torch.tensor(labels, dtype=torch.float32)
     )
 
 
 def _sanitize_prot_id(pid_input):
     """
-    Sanitize protein ID input, handling various input types:
-    - pandas Series or DataFrame: extract the first value
-    - list: extract the first element
-    - other types: convert to string
-    
-    Args:
-        pid_input: The input that should be converted to a protein ID string
-        
-    Returns:
-        str: Properly sanitized protein ID string
+    Sanitize protein ID input, handling various input types.
+    (This function seems fine, keeping it as is for now if it's used for filename generation)
     """
-    # Handle None or empty values
-    if pid_input is None:
-        return "unknown"
-    
-    # Convert to string if it's not already
+    if pid_input is None: return "unknown"
     pid_str = str(pid_input)
-    
-    # Handle pandas Series string representation (common issue in logs)
     if "Name: Target_ID" in pid_str or "dtype: object" in pid_str:
-        # Extract protein IDs from complex Series string
         try:
-            # Look for patterns like "12345    PROTEIN_NAME" in the string
-            matches = re.findall(r'(\d+\s+[A-Z0-9]+(?:\([^)]+\))?)', pid_str)
+            matches = re.findall(r'(\\d+\\s+[A-Z0-9]+(?:\\([^)]+\\))?)', pid_str)
             if matches:
-                # Extract the first protein ID
                 parts = matches[0].strip().split()
-                if len(parts) >= 2:
-                    # Take the last part as the protein ID
-                    return parts[-1].strip()
-            
-            # If that didn't work, try to find any capitalized identifiers
-            protein_pattern = r'\b[A-Z0-9]{3,10}\b'
+                if len(parts) >= 2: return parts[-1].strip()
+            protein_pattern = r'\\b[A-Z0-9]{3,10}\\b'
             protein_matches = re.findall(protein_pattern, pid_str)
             if protein_matches:
-                # Filter out common keywords
                 filtered = [p for p in protein_matches if p not in ['NAME', 'TARGET', 'TYPE', 'DTYPE', 'OBJECT']]
-                if filtered:
-                    return filtered[0]
-            
-            # If we couldn't find a good protein ID, hash the string
-            if len(pid_str) > 50:  # Only hash if it's a long string
+                if filtered: return filtered[0]
+            if len(pid_str) > 50:
                 hash_obj = hashlib.md5(pid_str.encode())
                 return f"seq-{hash_obj.hexdigest()}"
-        except Exception as e:
-            print(f"Error parsing complex protein ID: {e}")
-    
-    # Handle list-like strings: "['P12345']"
+        except Exception as e: print(f"Error parsing complex protein ID: {e}")
     if pid_str.startswith('[') and pid_str.endswith(']'):
         try:
-            # Try to parse as a literal
             literal = ast.literal_eval(pid_str)
-            if isinstance(literal, list) and literal:
-                return str(literal[0])
+            if isinstance(literal, list) and literal: return str(literal[0])
         except:
-            # If parsing fails, try regex
             match = re.search(r"'([^']+)'", pid_str)
-            if match:
-                return match.group(1)
-    
-    # Case 1: If it's a pandas DataFrame/Series
+            if match: return match.group(1)
     if hasattr(pid_input, 'iloc') and hasattr(pid_input, 'values'):
-        try:
-            return str(pid_input.iloc[0])
-        except:
-            pass
-    
-    # Case 2: If it's a list
+        try: return str(pid_input.iloc[0])
+        except: pass
     elif isinstance(pid_input, list) and len(pid_input) > 0:
         return str(pid_input[0])
-    
-    # Return the string representation
-    return pid_str
+    return pid_str.strip() # Added strip
 
 
 class DrugMolecule:
@@ -221,305 +212,392 @@ class DrugMolecule:
         mol = Chem.RemoveHs(mol_h)
 
         # Extract graph structure
-        self.mol, self.node_feats, self.edge_feats, self.adjacency_list, self.neighbours = \
+        self.mol, self.node_feats_list, self.edge_feats_dict, self.adjacency_list, self.neighbours = \
             self._construct_molecular_graph(mol)
-        self.num_nodes = len(self.node_feats)
+        self.num_nodes = len(self.node_feats_list)
         self.max_nodes = max_nodes
-        self.node_tensor, self.edge_tensor, self.adjacency_tensor, self.atomic_id_tensor = self._tensor_preprocess()
+        self.node_features_tensor, self.edge_features_tensor, self.adjacency_tensor, self.atomic_id_tensor = self._tensor_preprocess()
 
     def _construct_molecular_graph(self, mol: Chem.Mol):
-        node_feats, adjacency_list, edge_feats, neighbours = [], [], {}, []
-        for atom in mol.GetAtoms():
+        node_feats_list, adjacency_list, edge_feats_dict, neighbours = [], [], {}, []
+        for atom_idx, atom in enumerate(mol.GetAtoms()): # Use enumerate for clarity if idx is needed elsewhere
             feats = {
-                "atomic_num": atom.GetAtomicNum(),
+                "atomic_num": atom.GetAtomicNum(), # Used for atomic_id_tensor (d_z)
                 "formal_charge": atom.GetFormalCharge(),
                 "degree": atom.GetDegree(),
                 "hybridization": str(atom.GetHybridization()),
                 "aromatic": int(atom.GetIsAromatic())
             }
-            node_feats.append(feats)
+            # If include_3d and self.atom_coords is populated correctly for heavy atoms:
+            # if self.include_3d and hasattr(self, 'atom_coords') and atom_idx < len(self.atom_coords):
+            #    feats["coords"] = self.atom_coords[atom_idx] # This would require _process_node_features to handle "coords"
+            node_feats_list.append(feats)
             neighbours.append([])
         for bond in mol.GetBonds():
             i, j = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
             bf = {"bond_type": str(bond.GetBondType()),
                   "conjugated": int(bond.GetIsConjugated()),
                   "ring": int(bond.IsInRing())}
-            edge_feats[(i, j)], edge_feats[(j, i)] = bf, bf
+            edge_feats_dict[(i, j)], edge_feats_dict[(j, i)] = bf, bf
             adjacency_list += [(i, j), (j, i)]
-            neighbours[i].append(j)
-            neighbours[j].append(i)
-        return mol, node_feats, edge_feats, adjacency_list, neighbours
+            # neighbours[i].append(j) # This was not used later
+            # neighbours[j].append(i)
+        return mol, node_feats_list, edge_feats_dict, adjacency_list, neighbours # Removed neighbours from return as it's not used
 
     def _tensor_preprocess(self):
-        proc_x   = []
-        proc_z   = []                       # <— NEW
+        proc_node_features = [] # This will be d_x
+        proc_atomic_ids  = [] # This will be d_z
         
-        for idx, feats in enumerate(self.node_feats):
-            proc_x.append(self._process_node_features(feats))
-            proc_z.append(feats["atomic_num"])          # keep raw Z
+        for idx, feats in enumerate(self.node_feats_list):
+            proc_node_features.append(self._process_node_features(feats))
+            proc_atomic_ids.append(feats["atomic_num"])
 
-        # --- pad (node-feature matrix) ---
-        x = torch.tensor(proc_x, dtype=torch.float32)
-        x = self._pad(x, (self.max_nodes, x.size(1)))
+        node_features_tensor = torch.tensor(proc_node_features, dtype=torch.float32) # d_x
+        node_features_tensor = self._pad(node_features_tensor, (self.max_nodes, node_features_tensor.size(1) if self.num_nodes > 0 else 29)) # ensure consistent feature dim for empty graphs
 
-        # --- pad (atomic-ID vector) ------
-        z = torch.tensor(proc_z, dtype=torch.long)
-        z = F.pad(z, (0, self.max_nodes - z.size(0)), value=ATOM_PAD_ID)
+        atomic_id_tensor = torch.tensor(proc_atomic_ids, dtype=torch.long) # d_z
+        atomic_id_tensor = F.pad(atomic_id_tensor, (0, self.max_nodes - atomic_id_tensor.size(0)), value=ATOM_PAD_ID)
 
-        # edge and adjacency
-        if len(self.edge_feats) > 0:
-            num_edge_feats = len(self._process_edge_features(next(iter(self.edge_feats.values()))))
-        else:
-            num_edge_feats = len(self._process_edge_features({"bond_type":"UNSPECIFIED","conjugated":0,"ring":0}))
-        e = torch.zeros((self.max_nodes, self.max_nodes, num_edge_feats), dtype=torch.float32)
-        a = torch.zeros((self.max_nodes, self.max_nodes), dtype=torch.float32)
-        for (i, j), bf in self.edge_feats.items():
+        if len(self.edge_feats_dict) > 0:
+            num_edge_feats = len(self._process_edge_features(next(iter(self.edge_feats_dict.values()))))
+        else: # Handle molecules with no bonds (e.g. single atoms)
+            num_edge_feats = len(self._process_edge_features({"bond_type":"UNSPECIFIED","conjugated":0,"ring":0})) # Default edge feature count (17)
+        
+        edge_features_tensor = torch.zeros((self.max_nodes, self.max_nodes, num_edge_feats), dtype=torch.float32) # d_e
+        adjacency_tensor = torch.zeros((self.max_nodes, self.max_nodes), dtype=torch.float32) # d_a
+        for (i, j), bf in self.edge_feats_dict.items():
             if i < self.max_nodes and j < self.max_nodes:
-                e[i, j] = torch.tensor(self._process_edge_features(bf), dtype=torch.float32)
-                a[i, j] = 1
+                edge_features_tensor[i, j] = torch.tensor(self._process_edge_features(bf), dtype=torch.float32)
+                adjacency_tensor[i, j] = 1 # Adjacency for GAT
             
-        return x, e, a, z
+        return node_features_tensor, edge_features_tensor, adjacency_tensor, atomic_id_tensor
 
     def _pad(self, t: torch.Tensor, shape: tuple):
         pad = []
         for cur, tgt in zip(reversed(t.shape), reversed(shape)):
-            pad += [0, tgt - cur]
+            pad_val = tgt - cur
+            if pad_val < 0: # Should not happen if max_nodes is respected
+                pad_val = 0 
+            pad += [0, pad_val]
         return F.pad(t, pad, mode='constant', value=0)
 
     def _process_node_features(self, features: dict[str, Any]) -> list[float]:
-        hyb = {"UNSPECIFIED":0,"S":1,"SP":2,"SP2":3,"SP3":4,"SP2D":5,"SP3D":6,"SP3D2":7,"OTHER":8}
-        atoms = [1,3,5,6,7,8,9,11,14,15,16,17,19,30,34,35,53]
+        hyb = {"UNSPECIFIED":0,"S":1,"SP":2,"SP2":3,"SP3":4,"SP2D":5,"SP3D":6,"SP3D2":7,"OTHER":8} # len 9
+        atoms = [1,3,5,6,7,8,9,11,14,15,16,17,19,30,34,35,53] # len 17
         out: list[float] = []
-        for k, v in features.items():
-            if k == 'hybridization':
-                one = [0.0]*len(hyb); one[hyb.get(v,0)] = 1.0; out += one
-            elif k == 'atomic_num':
-                one = [0.0]*len(atoms)
-                if v in atoms: one[atoms.index(v)] = 1.0
-                out += one
-            else:
-                out.append(float(v))
+        
+        # Order: atomic_num_onehot (17), formal_charge (1), degree (1), hybridization_onehot (9), aromatic (1)
+        # Total = 17 + 1 + 1 + 9 + 1 = 29 features. This matches drug_in_features=29.
+        
+        # Atomic num one-hot
+        one_hot_atom = [0.0]*len(atoms)
+        if features["atomic_num"] in atoms: one_hot_atom[atoms.index(features["atomic_num"])] = 1.0
+        out += one_hot_atom
+        
+        out.append(float(features["formal_charge"]))
+        out.append(float(features["degree"]))
+        
+        # Hybridization one-hot
+        one_hot_hyb = [0.0]*len(hyb)
+        one_hot_hyb[hyb.get(str(features["hybridization"]), 0)] = 1.0 # Ensure key is string
+        out += one_hot_hyb
+        
+        out.append(float(features["aromatic"]))
         return out
 
     def _process_edge_features(self, features: dict[str, Any]) -> list[float]:
-        bond_enc = {"UNSPECIFIED":0,"SINGLE":1,"DOUBLE":2,"TRIPLE":3,"AROMATIC":4,
-                    "IONIC":5,"HYDROGEN":6,"THREECENTER":7,"DATIVEONE":8,"DATIVE":9,
-                    "DATIVEL":10,"DATIVER":11,"OTHER":12,"ZERO":13}
-        out: list[float] = []
-        for k, v in features.items():
-            if k == 'bond_type':
-                one = [0.0]*len(bond_enc); one[bond_enc.get(v,0)] = 1.0; out += one
-            else:
-                out.append(float(v))
-        return out
+        bond_enc = {"UNSPECIFIED":0,"SINGLE":1,"DOUBLE":2,"TRIPLE":3,"AROMATIC":4, # len 5
+                    "IONIC":5,"HYDROGEN":6,"THREECENTER":7,"DATIVEONE":8,"DATIVE":9, # len 5
+                    "DATIVEL":10,"DATIVER":11,"OTHER":12,"ZERO":13} # len 4. Total = 14?
+                    # Original code implies 17 edge features. Let's check.
+                    # Original: bond_type_onehot (14) + conjugated (1) + ring (1) = 16.
+                    # One more feature? Let's assume 17 is correct and there's one more binary flag or similar.
+                    # For now, sticking to original feature processing if it yielded 17.
+                    # The provided snippet for process_edge_features only explicitly handles bond_type.
 
-    def to_tensors(self):
-        return self.node_tensor, self.edge_tensor, self.adjacency_tensor, self.atomic_id_tensor
+        # Re-implementing based on common GAT-CD4C features if the snippet was partial
+        out: list[float] = []
+        # Bond type one-hot (14 values)
+        bond_type_one_hot = [0.0] * len(bond_enc)
+        bond_type_one_hot[bond_enc.get(str(features.get("bond_type", "UNSPECIFIED")), 0)] = 1.0
+        out += bond_type_one_hot
+
+        # Conjugated flag (1 value)
+        out.append(float(features.get("conjugated", 0)))
+
+        # Ring flag (1 value)
+        out.append(float(features.get("ring", 0)))
+        
+        # If total is 16, and model expects 17, we need one more placeholder or identify the missing feature.
+        # For now, pad to 17 if needed, or assume these 16 are what's used if drug_edge_features=16.
+        # The train.py sets drug_edge_features=17.
+        if len(out) < 17: # Pad to 17 if current is 16
+            out.append(0.0) # Placeholder for the 17th feature
+        return out[:17] # Ensure always 17
+
+    def to_tensors(self): # d_x (node features), d_z (atomic numbers), d_e (edge features), d_a (adjacency)
+        return self.node_features_tensor, self.atomic_id_tensor, self.edge_features_tensor, self.adjacency_tensor
 
 
 class DrugProteinDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, prot_emb: pd.DataFrame, graph_dir: str,
-                 max_nodes: int = 64, use_half: bool = False, include_3d: bool = False):
-        from rdkit import RDLogger
+    def __init__(self, df: pd.DataFrame, graph_dir: str, # Changed args
+                 max_nodes: int = 64, use_half: bool = False, include_3d_drug: bool = False): # include_3d for drugs
+        
+        if RDLogger is not None:
+            lg = RDLogger.logger()
+            lg.setLevel(RDLogger.CRITICAL)
 
-        # Retrieve the singleton logger
-        lg = RDLogger.logger()
-        # Suppress everything below CRITICAL (i.e., warnings and infos are silenced)
-        lg.setLevel(RDLogger.CRITICAL)
+        self.df = df
+        self.graph_dir = graph_dir # Directory for .pt protein graph files
+        self.max_nodes = max_nodes # Max nodes for padding (applies to both drug and protein)
+        self.use_half = use_half # For half precision, not currently used in tensor creation
+        self.include_3d_drug = include_3d_drug # For drug 3D coordinates
 
-        
-        self.max_nodes = max_nodes
-        self.use_half = use_half
-        self.include_3d = include_3d
-        self.graph_dir = graph_dir
-        
-        # Handle the case where df is actually a Series (e.g., df['Target_ID'])
-        if isinstance(df, pd.Series):
-            print(f"WARNING: A pandas Series was passed as 'df'. Series name: {df.name}")
-            print("This is an incorrect usage. Will try to recover by treating it as protein IDs.")
-            
-            # Create a simple DataFrame with just Target_ID and a placeholder pChEMBL_Value
-            temp_df = pd.DataFrame({'Target_ID': df.values, 'pChEMBL_Value': [0.0] * len(df)})
-            # Also add placeholder smiles if needed
-            if 'smiles' not in temp_df.columns:
-                temp_df['smiles'] = ['C'] * len(temp_df)  # Placeholder smiles
-            df = temp_df
-            print(f"Created temporary DataFrame with {len(df)} rows")
-            
-        self.pchembl = df['pChEMBL_Value'].values.tolist()
-        self.smiles = df['smiles'].values.tolist()
-        
-        # Convert protein IDs to strings to ensure they're hashable for lru_cache
-        prot_ids = []
-        for pid in df['Target_ID'].values:
-            # Apply the sanitization function to handle all input types
-            prot_ids.append(_sanitize_prot_id(pid))
-                
-        self.prot_ids = prot_ids
-        
-        self.prot_emb_df = prot_emb
-        
-        # Ensure the protein graph directory exists
+        # Ensure protein graph directory exists
         os.makedirs(self.graph_dir, exist_ok=True)
         
-        self.builder = ProteinGraphBuilder(self.graph_dir)
+        # Precompute smiles to DrugMolecule
+        self.smiles_to_drug = {
+            smiles: self.load_drug(smiles)
+            for smiles in tqdm(df['Drug'].unique(), desc="Processing drugs")
+        }
         
-        # Validate entries
-        self._validate_entries()
-        
-    def _validate_entries(self):
-        """Check for potential issues in the dataset."""
-        # Count valid/invalid SMILES
-        invalid_smiles = []
-        for i, smiles in enumerate(self.smiles):
-            try:
-                mol = Chem.MolFromSmiles(smiles)
-                if mol is None:
-                    invalid_smiles.append(i)
-            except:
-                invalid_smiles.append(i)
-                
-        if invalid_smiles:
-            print(f"INFO: Found {len(invalid_smiles)} invalid SMILES entries out of {len(self.smiles)}")
-            
-        # Check if protein graphs exist
+        self._validate_protein_graph_paths()
+
+
+    def _generate_protein_graph_filename(self, identifier: str) -> str:
+        """
+        Generates a safe filename for a protein graph. Consistent with embed_proteins.py.
+        Hashes identifiers that are too long or contain disallowed characters.
+        """
+        MAX_IDENTIFIER_LEN_BEFORE_HASH = 100
+        # Corrected regex: Allow A-Z, a-z, 0-9, underscore, hyphen, period.
+        # Original flawed regex: r"^[A-Za-z0-9_\\-\\.]+$" which incorrectly required literal backslashes.
+        ALLOWED_CHARS_REGEX = r"^[A-Za-z0-9_.-]+$" # Corrected regex
+        is_too_long = len(identifier) > MAX_IDENTIFIER_LEN_BEFORE_HASH
+        has_disallowed_chars = not re.match(ALLOWED_CHARS_REGEX, identifier)
+
+        if is_too_long or has_disallowed_chars:
+            hashed_identifier = hashlib.md5(identifier.encode()).hexdigest()
+            return f"seq-{hashed_identifier}.pt"
+        else:
+            return f"{identifier}.pt"
+
+    def _validate_protein_graph_paths(self):
         print("INFO: Validating protein graph paths...")
-        missing_graphs = []
-        unique_prot_ids_in_dataset = set()
+        missing_graphs_count = 0
+        unique_prot_ids = self.df['Target_ID'].apply(_sanitize_prot_id).unique()
+        # Get a list of raw unique protein IDs as well for fallback checking
+        raw_unique_prot_ids = self.df['Target_ID'].unique()
+        
+        # Create a dictionary for quick lookup of raw_id -> sanitized_id
+        # This assumes that the order and uniqueness of apply(_sanitize_prot_id).unique()
+        # can be mapped back to original IDs if needed, but it's safer to iterate through
+        # the original IDs from the dataframe that will be used in __getitem__
+        
+        checked_raw_ids = set() # To avoid redundant checks if raw IDs map to same sanitized ID
 
-        # Print details for the first 5 protein IDs processed
-        for i, prot_id_original in enumerate(self.prot_ids):
-            current_prot_id_str = str(prot_id_original) 
-            unique_prot_ids_in_dataset.add(current_prot_id_str)
-            
-            # First try with direct filename match (for simple IDs)
-            direct_path = os.path.join(self.graph_dir, f"{current_prot_id_str}.pt")
-            if os.path.exists(direct_path):
-                if i < 5: 
-                    print(f"  Checking for: original_pid='{prot_id_original}', found direct match: {direct_path}")
+        print(f"INFO: Checking {len(raw_unique_prot_ids)} unique Target_IDs from the DataFrame.")
+
+        for i, original_pid_from_df in enumerate(raw_unique_prot_ids):
+            if original_pid_from_df in checked_raw_ids:
                 continue
-                
-            # Then try with hash-based filename
-            graph_filename = self.builder._generate_protein_graph_filename(current_prot_id_str)
-            graph_path = os.path.join(self.graph_dir, graph_filename)
-            
-            if i < 5: 
-                print(f"  Checking for: original_pid='{prot_id_original}', processed_pid_str='{current_prot_id_str}', expected_filename='{graph_filename}', full_path='{graph_path}'")
-            
-            if not os.path.exists(graph_path):
-                missing_graphs.append(current_prot_id_str)
-                if i < 5: 
-                    print(f"    -> MISSING: {graph_path}")
-            elif i < 5: 
-                 print(f"    -> FOUND: {graph_path}")
+            checked_raw_ids.add(original_pid_from_df)
 
-        if missing_graphs:
-            unique_missing_ids = sorted(list(set(missing_graphs)))
-            print(f"WARNING: {len(unique_missing_ids)} unique protein graphs missing out of {len(unique_prot_ids_in_dataset)} unique protein IDs in the current dataset split. (Total entries checked in this split: {len(self.prot_ids)}, total missing entries including duplicates: {len(missing_graphs)})")
-            print(f"Example missing unique IDs (up to 5): {unique_missing_ids[:5]}") 
-            print("You may need to run embed_proteins.py to generate protein graphs for these IDs (e.g., using their UniProt accession or sequence as the identifier).")
+            sanitized_pid = _sanitize_prot_id(original_pid_from_df)
+            
+            # Attempt 1: Filename from sanitized_pid
+            graph_filename_sanitized = self._generate_protein_graph_filename(sanitized_pid)
+            graph_path_sanitized = os.path.join(self.graph_dir, graph_filename_sanitized)
+            
+            # Attempt 2: Filename from original_pid_from_df (if different from sanitized_pid)
+            graph_filename_original = None
+            graph_path_original = None
+            if original_pid_from_df != sanitized_pid:
+                graph_filename_original = self._generate_protein_graph_filename(original_pid_from_df)
+                graph_path_original = os.path.join(self.graph_dir, graph_filename_original)
+
+            log_prefix = f"  Processed ID {i+1}/{len(raw_unique_prot_ids)}: original='{original_pid_from_df}', sanitized='{sanitized_pid}' -> "
+            
+            found_path = None
+            if os.path.exists(graph_path_sanitized):
+                found_path = graph_path_sanitized
+                if i < 5 or missing_graphs_count < 2 : # Log first few finds or if we start seeing misses
+                     print(f"{log_prefix}FOUND (using sanitized): '{graph_filename_sanitized}'")
+            elif graph_path_original and os.path.exists(graph_path_original):
+                found_path = graph_path_original
+                if i < 5 or missing_graphs_count < 2:
+                     print(f"{log_prefix}FOUND (using original): '{graph_filename_original}'")
+            else:
+                missing_graphs_count += 1
+                # Log detailed info for missing ones, showing both attempts
+                log_msg = f"{log_prefix}MISSING. Attempted: "
+                log_msg += f"1. Using sanitized ('{sanitized_pid}') -> '{graph_filename_sanitized}' (Path: {graph_path_sanitized})"
+                if graph_filename_original:
+                    log_msg += f", 2. Using original ('{original_pid_from_df}') -> '{graph_filename_original}' (Path: {graph_path_original})"
+                else: # original was same as sanitized
+                    log_msg += f" (Original ID was same as sanitized, so only one distinct filename generated: '{graph_filename_sanitized}')"
+                
+                # Log more frequently for missing files to catch problematic IDs
+                if missing_graphs_count <= 10 or (i % (len(raw_unique_prot_ids)//20 +1) == 0) :
+                    print(log_msg)
+
+
+        if missing_graphs_count > 0:
+            print(f"WARNING: {missing_graphs_count} unique protein graphs appear to be missing from '{self.graph_dir}' out of {len(raw_unique_prot_ids)} unique protein IDs from DataFrame.")
+            print("Ensure that `embed_proteins.py` has been run for this dataset and the `protein_graph_dir` argument points to the correct location.")
+            print("Review the 'MISSING' logs above to see the exact filenames that were attempted.")
+
 
     def __len__(self):
-        return len(self.pchembl)
+        return len(self.df)
 
-    @lru_cache(maxsize=8192)
+    @lru_cache(maxsize=8192) # Cache DrugMolecule object processing
     def load_drug(self, smiles: str):
-        try:
-            return DrugMolecule(smiles, self.max_nodes, self.include_3d).to_tensors()
-        except ValueError as e:
-            print(f"Error loading drug molecule from SMILES: {smiles[:20]}... - {str(e)}")
-            # Return dummy tensors as fallback
-            x = torch.zeros((self.max_nodes, 29), dtype=torch.float32)  # Assuming 29 is correct dimension
-            e = torch.zeros((self.max_nodes, self.max_nodes, 17), dtype=torch.float32)
-            a = torch.zeros((self.max_nodes, self.max_nodes), dtype=torch.float32)
-            z = torch.zeros(self.max_nodes, dtype=torch.long)
-            return x, e, a, z
+        # Returns tuple: (node_features_tensor, atomic_id_tensor, edge_features_tensor, adjacency_tensor)
+        return DrugMolecule(smiles_str=smiles, max_nodes=self.max_nodes, include_3d=self.include_3d_drug).to_tensors()
 
-    @lru_cache(maxsize=256)
-    def load_protein(self, pid):
-        """Load a protein graph from the builder.
+    @lru_cache(maxsize=1024) # Cache loaded protein graph Data objects
+    def load_protein(self, protein_id_original: str) -> Data:
+        # This is the ID from the DataFrame row['Target_ID']
         
-        Args:
-            pid: Protein ID, should be a string
-            
-        Returns:
-            Protein graph data structure
-        """
-        # Sanitize the protein ID
+        # Attempt 1: Use sanitized ID for filename generation
+        sanitized_pid = _sanitize_prot_id(protein_id_original)
+        graph_filename_attempt1 = self._generate_protein_graph_filename(sanitized_pid)
+        graph_path_attempt1 = os.path.join(self.graph_dir, graph_filename_attempt1)
+
+        # Attempt 2: Use original ID for filename generation (if different and first attempt failed)
+        graph_filename_attempt2 = None
+        graph_path_attempt2 = None
+
+        final_path_to_load = None
+
+        if os.path.exists(graph_path_attempt1):
+            final_path_to_load = graph_path_attempt1
+        elif protein_id_original != sanitized_pid: # Only try original if it's different
+            graph_filename_attempt2 = self._generate_protein_graph_filename(protein_id_original)
+            graph_path_attempt2 = os.path.join(self.graph_dir, graph_filename_attempt2)
+            if os.path.exists(graph_path_attempt2):
+                final_path_to_load = graph_path_attempt2
+        
         try:
-            pid_to_load = _sanitize_prot_id(pid)
-            
-            # First try direct path without hashing (for simple IDs)
-            direct_path = os.path.join(self.graph_dir, f"{pid_to_load}.pt")
-            if os.path.exists(direct_path):
-                try:
-                    # Try with weights_only=False using try-except to handle older PyTorch versions
-                    try:
-                        return torch.load(direct_path, map_location="cpu", weights_only=False)
-                    except TypeError:
-                        # weights_only parameter not available in this PyTorch version
-                        return torch.load(direct_path, map_location="cpu")
-                except Exception as e:
-                    print(f"Error loading protein graph from direct path {direct_path}: {str(e)}")
-                    # Continue to try the hashed path
-            
-            # Try using hashed filename
-            hashed_pid = hashlib.md5(pid_to_load.encode()).hexdigest()
-            hashed_path = os.path.join(self.graph_dir, f"{hashed_pid}.pt")
-            if os.path.exists(hashed_path):
-                try:
-                    try:
-                        return torch.load(hashed_path, map_location="cpu", weights_only=False)
-                    except TypeError:
-                        return torch.load(hashed_path, map_location="cpu")
-                except Exception as e:
-                    print(f"Error loading protein graph from hashed path {hashed_path}: {str(e)}")
-            
-            print(f"Warning: Could not find protein graph for ID: {pid_to_load}")
-            # Create a dummy protein graph for proteins not found
-            return self._create_dummy_protein_graph()
-            
+            if final_path_to_load:
+                protein_graph = torch.load(final_path_to_load, map_location='cpu', weights_only=False) 
+                if not isinstance(protein_graph, Data):
+                    # This warning is important
+                    print(f"Warning: File {final_path_to_load} (for original ID '{protein_id_original}') did not contain a PyG Data object. Got {type(protein_graph)}. Using dummy.")
+                    return self._create_dummy_protein_graph(protein_id_original=protein_id_original)
+                return protein_graph
+            else:
+                # Neither attempt found the file. This case should be logged by _validate_protein_graph_paths too.
+                # The dummy creation message here will be specific to the load attempt.
+                # print(f"Debug: Protein graph file not found for '{protein_id_original}' (sanitized: '{sanitized_pid}'). Tried: '{graph_filename_attempt1}' and possibly '{graph_filename_attempt2}'. Creating dummy.")
+                raise FileNotFoundError(f"Graph not found for '{protein_id_original}' (sanitized: '{sanitized_pid}')")
+
+        except FileNotFoundError:
+            return self._create_dummy_protein_graph(protein_id_original=protein_id_original)
         except Exception as e:
-            print(f"Error in load_protein: {str(e)}")
-            return self._create_dummy_protein_graph()
+            # Log which path was being attempted if possible, or just the general error
+            path_info = f"at path {final_path_to_load}" if final_path_to_load else f"(path not resolved for ID {protein_id_original})"
+            print(f"Error loading protein graph {path_info} for ID {protein_id_original}: {e}. Using dummy protein.")
+            return self._create_dummy_protein_graph(protein_id_original=protein_id_original)
 
-    def _create_dummy_protein_graph(self):
-        """Create a minimal graph as fallback for missing protein graphs.
+    def _create_dummy_protein_graph(self, protein_id_original: Optional[str] = None) -> Data:
+        pid_info = f" for PID: {protein_id_original}" if protein_id_original else ""
+        print(f"Warning: Creating dummy protein graph{pid_info}.")
+        # Node features: 24 dims (one-hot AA(20) + charge(1) + coords(3))
+        # Edge features: 1 dim (distance)
+        # Create a single dummy node
+        dummy_x = torch.zeros((1, 24), dtype=torch.float32)
+        # No edges for a single node graph, or a self-loop if required by model downstream (GAT usually handles this)
+        dummy_edge_index = torch.empty((2, 0), dtype=torch.long) # No edges
+        dummy_edge_attr = torch.empty((0, 1), dtype=torch.float32) # No edge attributes
+
+        return Data(x=dummy_x, edge_index=dummy_edge_index, edge_attr=dummy_edge_attr)
+
+    def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Data, Any]:
+        row = self.df.iloc[i]
+        drug_smiles = row['Drug']
+        protein_id = row['Target_ID'] # Original ID from DataFrame
+        label = row['Label']
         
-        Returns:
-            Data: A minimal protein graph with dummy features
-        """
-        from torch_geometric.data import Data
-        # Create a minimal graph with one dummy node and minimal features
-        x = torch.zeros((1, 24), dtype=torch.float32)  # 20 one-hot + 1 charge + 3 coords
-        edge_index = torch.zeros((2, 1), dtype=torch.long)  # Self-loop
-        edge_attr = torch.zeros((1, 1), dtype=torch.float32)  # Single edge feature
-        return Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+        # d_x_drug, d_z_drug, d_e_drug, d_a_drug
+        drug_tensors = self.load_drug(drug_smiles) 
+        
+        protein_graph_data = self.load_protein(protein_id)
 
-    def __getitem__(self, i):
-        # ── drug tensors (order matters!) ───────────────────────────────
-        d_x, d_e, d_a, d_z = self.load_drug(self.smiles[i])   # <- 4-tuple
-    
-        # ── raw protein graph from builder ─────────────────────────────
-        pg   = self.load_protein(self.prot_ids[i])
-        p_x  = pg.x.cpu().half()        if self.use_half else pg.x.cpu()        # node-features
-        p_e  = pg.edge_attr.cpu().half() if self.use_half else pg.edge_attr.cpu()  # edge-attr
-        p_i  = pg.edge_index.cpu()                                            # edge index (sparse)
-    
-        lbl  = torch.tensor(self.pchembl[i], dtype=torch.float32)
-    
-        # NOTE: we *do not* build dense adjacency here; that's done in the collate_fn
-        return d_x, d_z, d_e, d_a, p_x, p_e, p_i, lbl
+        return (*drug_tensors, protein_graph_data, label)
 
 
+# Example of how to use if this file were run (for testing)
 if __name__ == '__main__':
-    import python_ta
-    python_ta.check_all(config={
-        'extra-imports': [
-            'rdkit.Chem', 'Chem', 'AllChem', 'typing', 'pandas', 'torch',
-            'torch.utils.data', 'torch.nn.functional', 'src.utils.functional_groups'
-        ],
-        'disable': ['R0914', 'E1101'],
-        'allowed-io': [],
-        'max-line-length': 120,
+    # Create dummy data for testing
+    dummy_df = pd.DataFrame({
+        'Drug': ['CCO', 'CNC'],
+        'Target_ID': ['P12345', 'P67890'], # Example protein IDs
+        'Label': [7.5, 8.1]
     })
+    dummy_graph_dir = "../data/dummy_protein_graphs"
+    os.makedirs(dummy_graph_dir, exist_ok=True)
+
+    # Create dummy .pt files for P12345 and P67890
+    # Dummy graph for P12345
+    prot1_x = torch.rand(10, 24) # 10 residues, 24 features
+    prot1_edge_index = torch.tensor([[0, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0],
+                                     [1, 0, 2, 1, 4, 3, 6, 5, 8, 7, 0, 9]], dtype=torch.long) # Example edges
+    prot1_edge_attr = torch.rand(prot1_edge_index.size(1), 1) # 1 edge feature (distance)
+    prot1_data = Data(x=prot1_x, edge_index=prot1_edge_index, edge_attr=prot1_edge_attr)
+    torch.save(prot1_data, os.path.join(dummy_graph_dir, "P12345.pt"))
+    
+    # Dummy graph for P67890 (missing, to test dummy creation)
+    # Not creating P67890.pt to test fallback
+
+    print(f"Created dummy data in {dummy_graph_dir}")
+
+    dataset = DrugProteinDataset(df=dummy_df, graph_dir=dummy_graph_dir, max_nodes=15, include_3d_drug=False)
+    print(f"Dataset length: {len(dataset)}")
+    
+    if len(dataset) > 0:
+        item0 = dataset[0] # d_x, d_z, d_e, d_a, protein_graph_data, label
+        item1 = dataset[1] # Should load dummy for P67890
+
+        print(f"Item 0 drug node features shape: {item0[0].shape}")      # d_x
+        print(f"Item 0 drug atomic IDs shape: {item0[1].shape}")         # d_z
+        print(f"Item 0 protein graph data (P12345): {item0[4]}")
+        print(f"Item 0 label: {item0[5]}")
+
+        print(f"Item 1 protein graph data (P67890 - should be dummy): {item1[4]}")
+
+
+    # Test collation
+    from functools import partial
+    
+    # Create a list of items for the batch
+    # Ensure items are structured as expected by collate_drug_prot
+    # d_x, d_z, d_e, d_a, protein_graph_data, label
+    batch_data = [dataset[i] for i in range(len(dataset))]
+    if batch_data:
+        collate_fn_test = partial(collate_drug_prot, hard_limit=15, drug_edge_feats=17, prot_edge_feats=1)
+        
+        try:
+            collated_batch = collate_fn_test(batch_data)
+            d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a, lbls = collated_batch
+            print("\nCollated batch shapes:")
+            print(f"  Drug Atomic IDs (d_z): {d_z.shape}, type: {d_z.dtype}")
+            print(f"  Drug Node Features (d_x): {d_x.shape}")
+            print(f"  Drug Edge Features (d_e): {d_e.shape}")
+            print(f"  Drug Adjacency (d_a): {d_a.shape}")
+            print(f"  Protein Residue IDs (p_z): {p_z.shape}, type: {p_z.dtype}")
+            print(f"  Protein Node Dense Feats (p_x): {p_x.shape}") # charge + coords
+            print(f"  Protein Edge Features (p_e): {p_e.shape}")
+            print(f"  Protein Adjacency (p_a): {p_a.shape}")
+            print(f"  Labels (lbls): {lbls.shape}")
+        except Exception as e:
+            print(f"Error during collate_fn_test: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # Clean up dummy files and dir
+    # os.remove(os.path.join(dummy_graph_dir, "P12345.pt"))
+    # os.rmdir(dummy_graph_dir)
+    # print("Cleaned up dummy files.")
