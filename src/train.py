@@ -326,9 +326,15 @@ def load_data(
                  df_interactions.rename(columns={'Drug_ID': 'Drug'}, inplace=True)
             
             # Apply transformations based on dataset type
-            if dataset_name and dataset_name.upper() == "DAVIS": # Added check for dataset_name not None
+            if dataset_name.upper() == "DAVIS":
                 print("INFO: Applying DAVIS-specific Kd transformation to labels.")
                 df_interactions['Label'] = df_interactions['Label'].apply(transform_davis_score)
+
+                # Keep only ONE 'Drug' column ― the SMILES we just picked
+                df_interactions = df_interactions.loc[:, ~df_interactions.columns.duplicated(keep='last')]
+            
+                # Downstream code always expects string SMILES
+                df_interactions['Drug'] = df_interactions['Drug'].astype(str)
             
             df_interactions.to_csv(main_dataset_csv_path, index=False)
             print(f"Loaded and cached {dataset_name.upper()} from TDC to {main_dataset_csv_path}")
@@ -350,6 +356,39 @@ def load_data(
     else:
         print(f"Loading main interaction data from cached file: {main_dataset_csv_path}")
         df_interactions = pd.read_csv(main_dataset_csv_path)
+
+    # ------------------------------------------------------------------
+    # DAVIS: verify that the column used as SMILES is really SMILES
+    # ------------------------------------------------------------------
+    def _looks_like_smiles(s: pd.Series) -> bool:
+        """Heuristic: at least one entry contains a typical SMILES character."""
+        return s.astype(str).str.contains(r"[B-DF-HJ-NP-TV-Zb-df-hj-np-tv-z@\[\]\(\)=#]").any()
+
+    if dataset_name.upper() == "DAVIS":
+        # a) prefer an explicit `smiles` column if it exists
+        if 'smiles' in df_interactions.columns:
+            df_interactions.rename(columns={'smiles': 'Drug'}, inplace=True)
+
+        # b) if `Drug` is present but all-numeric while `Drug_ID` looks like SMILES, swap them
+        if ('Drug' in df_interactions.columns
+                and pd.api.types.is_numeric_dtype(df_interactions['Drug'])
+                and 'Drug_ID' in df_interactions.columns
+                and _looks_like_smiles(df_interactions['Drug_ID'])):
+            print("[INFO] Cached DAVIS file contained numeric Drug indices – "
+                  "using Drug_ID column as the real SMILES.")
+            df_interactions['Drug'] = df_interactions['Drug_ID']
+
+        # c) if the column we ended up with still does *not* look like SMILES,
+        #    drop the stale cache and rebuild from TDC.
+        if not _looks_like_smiles(df_interactions['Drug']):
+            print("[WARN] Cached file still lacks valid SMILES. Re-downloading DAVIS …")
+            os.remove(main_dataset_csv_path)
+            return load_data(   # ─ rerun but this time the cache is gone
+                data_path, seed, frac_train, frac_val, frac_test, use_small,
+                dataset_name, protein_graph_dir, max_nodes, include_3d_drug)
+
+    # make sure downstream code always sees strings
+    df_interactions['Drug'] = df_interactions['Drug'].astype(str)
 
     # Standardize column names after loading, before validation
     # Handles cases where CSV might have 'Y' or 'pChEMBL_Value' for labels,

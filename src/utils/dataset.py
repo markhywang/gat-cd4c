@@ -358,8 +358,9 @@ class DrugProteinDataset(Dataset):
         
         # Precompute smiles to DrugMolecule
         self.smiles_to_drug = {
-            smiles: self.load_drug(smiles)
-            for smiles in tqdm(df['Drug'].unique(), desc="Processing drugs")
+            str(smiles): self.load_drug(str(smiles))          # ← enforce str
+            for smiles in tqdm(df['Drug'].astype(str).unique(),
+                              desc="Processing drugs")
         }
         
         self._validate_protein_graph_paths()
@@ -367,21 +368,28 @@ class DrugProteinDataset(Dataset):
 
     def _generate_protein_graph_filename(self, identifier: str) -> str:
         """
-        Generates a safe filename for a protein graph. Consistent with embed_proteins.py.
-        Hashes identifiers that are too long or contain disallowed characters.
-        """
-        MAX_IDENTIFIER_LEN_BEFORE_HASH = 100
-        # Corrected regex: Allow A-Z, a-z, 0-9, underscore, hyphen, period.
-        # Original flawed regex: r"^[A-Za-z0-9_\\-\\.]+$" which incorrectly required literal backslashes.
-        ALLOWED_CHARS_REGEX = r"^[A-Za-z0-9_.-]+$" # Corrected regex
-        is_too_long = len(identifier) > MAX_IDENTIFIER_LEN_BEFORE_HASH
-        has_disallowed_chars = not re.match(ALLOWED_CHARS_REGEX, identifier)
+        Generate the on-disk filename for a protein graph.
 
-        if is_too_long or has_disallowed_chars:
-            hashed_identifier = hashlib.md5(identifier.encode()).hexdigest()
-            return f"seq-{hashed_identifier}.pt"
-        else:
-            return f"{identifier}.pt"
+        ➊ Fast path — mutation/domain variants
+           e.g.  "EGFR(T790M)"  ➜  "EGFR.pt"   (only if that file exists)
+        """
+        if "(" in identifier:
+            base_id = identifier.split("(", 1)[0].strip()
+            base_path = os.path.join(self.graph_dir, f"{base_id}.pt")
+            if os.path.exists(base_path):
+                return f"{base_id}.pt"              # reuse the wild-type graph
+
+        # ➋ Otherwise behave EXACTLY like embed_proteins.py
+        MAX_IDENTIFIER_LEN_BEFORE_HASH = 100
+        ALLOWED_CHARS_REGEX = r"^[A-Za-z0-9_\-\.]+$"    # identical to builder :contentReference[oaicite:1]{index=1}
+        needs_hash = (
+            len(identifier) > MAX_IDENTIFIER_LEN_BEFORE_HASH or
+            not re.match(ALLOWED_CHARS_REGEX, identifier)
+        )
+        if needs_hash:
+            return f"seq-{hashlib.md5(identifier.encode()).hexdigest()}.pt"
+        return f"{identifier}.pt"
+    
 
     def _validate_protein_graph_paths(self):
         print("INFO: Validating protein graph paths...")
