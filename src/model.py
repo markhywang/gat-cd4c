@@ -380,7 +380,9 @@ class DualGraphAttentionNetwork(nn.Module):
         if use_prot_feature_prep:
             self.prot_feature_prep = FeaturePrep(num_res_types, z_emb_dim, prot_in_features, device)
         self.drug_ln = nn.LayerNorm(self.drug_feature_prep.out_features)
-        self.prot_ln = nn.LayerNorm(self.drug_feature_prep.out_features if use_prot_feature_prep else prot_in_features)
+        self.prot_ln = nn.LayerNorm(
+            self.prot_feature_prep.out_features if use_prot_feature_prep else prot_in_features
+        )
 
         # ---- Graph encoders ----
         self.drug_encoder = GraphAttentionEncoder(
@@ -396,7 +398,7 @@ class DualGraphAttentionNetwork(nn.Module):
             use_cross=use_cross,
         )
         self.prot_encoder = GraphAttentionEncoder(
-            in_features=self.drug_feature_prep.out_features if use_prot_feature_prep else prot_in_features,
+            in_features=self.prot_feature_prep.out_features if use_prot_feature_prep else prot_in_features,
             hidden_size=hidden_size,
             out_features=emb_size,
             num_edge_features=prot_edge_features,
