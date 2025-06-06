@@ -21,6 +21,21 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+# -------------------------------------------------
+#  SSM‑DTA helpers
+# -------------------------------------------------
+
+
+class MLMHead(nn.Module):
+    """Linear decoder that predicts the original node class from a masked embedding."""
+
+    def __init__(self, in_dim: int, num_classes: int) -> None:
+        super().__init__()
+        self.proj = nn.Linear(in_dim, num_classes)
+
+    def forward(self, hidden: Tensor) -> Tensor:  # [N_masked, emb]
+        return self.proj(hidden)                 # [N_masked, vocab]
+
 # -----------------------------------------------------------------------------
 # Basic utility modules -------------------------------------------------------
 # -----------------------------------------------------------------------------
@@ -198,6 +213,13 @@ class GPSLayer(nn.Module):
         super().__init__()
         self.local = local_layer
 
+        in_dim = local_layer.node_projection.in_features
+        out_dim = local_layer.node_projection.out_features
+        if in_dim != out_dim:
+            self.residual_proj = nn.Linear(in_dim, out_dim)
+        else:
+            self.residual_proj = nn.Identity()
+
         self.global_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.use_cross = use_cross
         if use_cross:
@@ -220,7 +242,7 @@ class GPSLayer(nn.Module):
         residual = x
 
         # 1. local message passing ------------------------------------------
-        x, e, a = self.local((x, e, a))
+        x = self.local(x, a, e)
 
         # 2. global self‑attention -----------------------------------------
         g_out, _ = self.global_attn(x, x, x)
@@ -232,7 +254,7 @@ class GPSLayer(nn.Module):
             c_out = torch.zeros_like(x)
 
         # 4. gated fusion & feed‑forward -----------------------------------
-        res = self.local.residual_proj(residual) if hasattr(self.local, "residual_proj") else residual
+        res = self.residual_proj(residual)
         fused = res + x + self.gamma * g_out + self.gamma * c_out
         fused = self.norm(fused)
         out = self.mlp(fused)
@@ -271,7 +293,7 @@ class GlobalAttentionPooling(nn.Module):
 
 
 class GraphAttentionEncoder(nn.Module):
-    """Stack of GPS layers followed by global pooling."""
+    """Stack of GPS layers."""
 
     def __init__(
         self,
@@ -283,7 +305,6 @@ class GraphAttentionEncoder(nn.Module):
         num_attn_heads: int,
         dropout: float,
         mlp_dropout: float,
-        pooling_dim: int,
         device: Union[str, torch.device],
         *,
         use_cross: bool = False,
@@ -316,13 +337,12 @@ class GraphAttentionEncoder(nn.Module):
                 )
             )
         self.gps_layers = nn.ModuleList(layers)
-        self.global_pool = GlobalAttentionPooling(in_features=out_features, hidden_dim=pooling_dim)
 
     def forward(self, node_feats: Tensor, edge_feats: Tensor, adj: Tensor, *, context: Tensor | None = None) -> Tensor:
         x, e, a = node_feats, edge_feats, adj
         for layer in self.gps_layers:
             x, e, a = layer((x, e, a), context=context)
-        return self.global_pool(x)
+        return x
 
 
 class DualGraphAttentionNetwork(nn.Module):
@@ -353,72 +373,68 @@ class DualGraphAttentionNetwork(nn.Module):
         super().__init__()
         self.device = torch.device(device)
         self.use_cross = use_cross
+        self.use_prot_feature_prep = use_prot_feature_prep
 
-        # --- Drug Feature Preparation ---
-        # d_z (atomic numbers) will be embedded. d_x (drug_in_features dim) will be concatenated.
-        self.drug_feat_prep = FeaturePrep(
-            num_categories=num_atom_types, 
-            emb_dim=z_emb_dim,
-            in_features_dense=drug_in_features, # e.g., 29 from DrugMolecule
-            device=device
+        # ---- Feature preparation ----
+        self.drug_feature_prep = FeaturePrep(num_atom_types, z_emb_dim, drug_in_features, device)
+        if use_prot_feature_prep:
+            self.prot_feature_prep = FeaturePrep(num_res_types, z_emb_dim, prot_in_features, device)
+        self.drug_ln = nn.LayerNorm(self.drug_feature_prep.out_features)
+        self.prot_ln = nn.LayerNorm(self.drug_feature_prep.out_features if use_prot_feature_prep else prot_in_features)
+
+        # ---- Graph encoders ----
+        self.drug_encoder = GraphAttentionEncoder(
+            in_features=self.drug_feature_prep.out_features,
+            hidden_size=hidden_size,
+            out_features=emb_size,
+            num_edge_features=drug_edge_features,
+            num_layers=num_layers,
+            num_attn_heads=num_heads,
+            dropout=dropout,
+            mlp_dropout=mlp_dropout,
+            device=device,
+            use_cross=use_cross,
         )
-        gat_drug_in_dim = self.drug_feat_prep.out_features # z_emb_dim + drug_in_features
+        self.prot_encoder = GraphAttentionEncoder(
+            in_features=self.drug_feature_prep.out_features if use_prot_feature_prep else prot_in_features,
+            hidden_size=hidden_size,
+            out_features=emb_size,
+            num_edge_features=prot_edge_features,
+            num_layers=num_layers,
+            num_attn_heads=num_heads,
+            dropout=dropout,
+            mlp_dropout=mlp_dropout,
+            device=device,
+            use_cross=use_cross,
+        )
 
-        # --- Protein Feature Preparation ---
-        self.use_prot_feature_prep = use_prot_feature_prep # Should be True
-        if self.use_prot_feature_prep:
-            # p_z (residue IDs) embedded. p_x_dense (prot_in_features dim, e.g. 4 for charge+coords) concatenated.
-            self.prot_feat_prep = FeaturePrep(
-                num_categories=num_res_types, 
-                emb_dim=z_emb_dim,
-                in_features_dense=prot_in_features, # e.g. 4 for charge+coords
-                device=device
-            )
-            gat_prot_in_dim = self.prot_feat_prep.out_features # z_emb_dim + prot_in_features
-        else:
-            # This path is not expected for current graph protein setup (.pt files)
-            self.prot_feat_prep = None 
-            gat_prot_in_dim = prot_in_features # Would be raw feature dim if no FeaturePrep
-
-        # --- Drug GAT Layers ---
-        # GAT layers output `emb_size` features
-        self.drug_conv_initial = GraphAttentionLayer(device, gat_drug_in_dim, emb_size, drug_edge_features, num_heads, dropout, mlp_dropout)
-        self.drug_conv_layers = nn.ModuleList([
-            GraphAttentionLayer(device, emb_size, emb_size, drug_edge_features, num_heads, dropout, mlp_dropout)
-            for _ in range(num_layers - 1)
-        ])
-        self.drug_pooling = GlobalAttentionPooling(emb_size, pooling_dim, device=device) # Input to pooling is emb_size
-
-        # --- Protein GAT Layers ---
-        self.prot_conv_initial = GraphAttentionLayer(device, gat_prot_in_dim, emb_size, prot_edge_features, num_heads, dropout, mlp_dropout)
-        self.prot_conv_layers = nn.ModuleList([
-            GraphAttentionLayer(device, emb_size, emb_size, prot_edge_features, num_heads, dropout, mlp_dropout)
-            for _ in range(num_layers - 1)
-        ])
-        self.prot_pooling = GlobalAttentionPooling(emb_size, pooling_dim, device=device) # Input to pooling is emb_size
-
-        # --- Cross-Attention (Optional) ---
-        # Cross attention operates on features of `emb_size` (output of GATs)
+        # ---- CLS-only cross-attention ----
         if self.use_cross:
-            self.cross_attn_drug = nn.MultiheadAttention(embed_dim=emb_size, num_heads=num_heads, dropout=dropout, batch_first=True)
-            self.cross_attn_prot = nn.MultiheadAttention(embed_dim=emb_size, num_heads=num_heads, dropout=dropout, batch_first=True)
-            self.norm_cross_drug = nn.LayerNorm(emb_size)
-            self.norm_cross_prot = nn.LayerNorm(emb_size)
-            # Pooled feature dimension remains emb_size as pooling happens after potential cross-attention
-            pooled_input_dim_for_mlp = emb_size 
-        else:
-            pooled_input_dim_for_mlp = emb_size
+            self.cross_cls_drug = nn.MultiheadAttention(
+                emb_size, num_heads, dropout=dropout, batch_first=True
+            )
+            self.cross_cls_prot = nn.MultiheadAttention(
+                emb_size, num_heads, dropout=dropout, batch_first=True
+            )
 
-        # --- Readout MLP ---
-        self.mlp = nn.Sequential(
-            nn.Linear(2 * pooled_input_dim_for_mlp, mlp_hidden),
-            nn.ReLU(),
-            nn.Dropout(mlp_dropout),
-            nn.Linear(mlp_hidden, mlp_hidden // 2),
-            nn.ReLU(),
-            nn.Dropout(mlp_dropout),
-            nn.Linear(mlp_hidden // 2, 1)
+        # ---- Pooling ----
+        self.drug_pooling = GlobalAttentionPooling(emb_size, pooling_dim, device)
+        self.prot_pooling = GlobalAttentionPooling(emb_size, pooling_dim, device)
+        self.pool_norm_drug = nn.LayerNorm(emb_size)
+        self.pool_norm_prot = nn.LayerNorm(emb_size)
+
+        # ---- MLM heads ----
+        self.mlm_head_drug = MLMHead(emb_size, num_atom_types + 1)
+        self.mlm_head_prot = MLMHead(emb_size, num_res_types + 1)
+
+        # ---- Regression head ----
+        self.regressor = nn.Sequential(
+            nn.Linear(emb_size * 2, mlp_hidden),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(mlp_hidden, 1),
         )
+
         self.to(self.device)
 
     def forward(
@@ -430,50 +446,55 @@ class DualGraphAttentionNetwork(nn.Module):
         p_z: torch.Tensor,      # Protein residue type IDs [B, N_p]
         p_x_dense: torch.Tensor,# Protein node dense features (charge, coords) [B, N_p, F_p_dense_raw = 4]
         p_e: torch.Tensor,      # Protein edge features [B, N_p, N_p, F_p_edge]
-        p_a: torch.Tensor       # Protein adjacency matrix [B, N_p, N_p]
-    ) -> torch.Tensor:
+        p_a: torch.Tensor,      # Protein adjacency matrix [B, N_p, N_p]
+        mlm_mask_drug: Optional[torch.Tensor] = None,  # [B, N_d], True for masked nodes
+        mlm_mask_prot: Optional[torch.Tensor] = None,  # [B, N_p], True for masked nodes
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
 
         # --- Drug Branch ---
-        drug_features_prepared = self.drug_feat_prep(d_z, d_x) # Out: [B, N_d, z_emb_dim + F_d_dense_raw]
-        
-        hd = self.drug_conv_initial(drug_features_prepared, d_a, d_e)
-        for layer in self.drug_conv_layers:
-            hd = layer(hd, d_a, d_e) # Output of GAT layers is `emb_size`
-        # hd is now [B, N_d, emb_size]
+        drug_features_prepared = self.drug_feature_prep(d_z, d_x)
+        drug_features_prepared = self.drug_ln(drug_features_prepared)
+        hd = self.drug_encoder(drug_features_prepared, d_e, d_a)
 
         # --- Protein Branch ---
-        if self.use_prot_feature_prep and self.prot_feat_prep is not None:
-            prot_features_prepared = self.prot_feat_prep(p_z, p_x_dense) # Out: [B, N_p, z_emb_dim + F_p_dense_raw]
-        else: # Should not happen with current setup
-            prot_features_prepared = p_x_dense 
+        if self.use_prot_feature_prep:
+            prot_features_prepared = self.prot_feature_prep(p_z, p_x_dense)
+            prot_features_prepared = self.prot_ln(prot_features_prepared)
+        else:
+            prot_features_prepared = p_x_dense
+        hp = self.prot_encoder(prot_features_prepared, p_e, p_a)
 
-        hp = self.prot_conv_initial(prot_features_prepared, p_a, p_e)
-        for layer in self.prot_conv_layers:
-            hp = layer(hp, p_a, p_e) # Output of GAT layers is `emb_size`
-        # hp is now [B, N_p, emb_size]
-
-        # --- Cross-Attention (Optional) ---
+        # --- CLS-only cross-attention or plain pooling ---
         if self.use_cross:
-            drug_padding_mask = (d_z == 0) 
-            prot_padding_mask = (p_z == 0) 
+            d_cls = self.drug_pooling(hd, node_mask=(d_z != 0)).unsqueeze(1)  # [B,1,E]
+            p_cls = self.prot_pooling(hp, node_mask=(p_z != 0)).unsqueeze(1)  # [B,1,E]
 
-            hd_cross, _ = self.cross_attn_drug(query=hd, key=hp, value=hp, key_padding_mask=prot_padding_mask)
-            hd = self.norm_cross_drug(hd + hd_cross) 
+            drug_padding_mask = (d_z == 0)
+            prot_padding_mask = (p_z == 0)
 
-            hp_cross, _ = self.cross_attn_prot(query=hp, key=hd, value=hd, key_padding_mask=drug_padding_mask)
-            hp = self.norm_cross_prot(hp + hp_cross) 
-        
-        # --- Pooling ---
-        drug_node_mask = (d_z != 0) # Mask for actual nodes
-        prot_node_mask = (p_z != 0) 
+            d_cls_upd, _ = self.cross_cls_drug(d_cls, hp, hp, key_padding_mask=prot_padding_mask)
+            p_cls_upd, _ = self.cross_cls_prot(p_cls, hd, hd, key_padding_mask=drug_padding_mask)
 
-        drug_pooled = self.drug_pooling(hd, node_mask=drug_node_mask) # [B, emb_size]
-        prot_pooled = self.prot_pooling(hp, node_mask=prot_node_mask) # [B, emb_size]
-        
-        # --- Readout MLP ---
-        combined = torch.cat([drug_pooled, prot_pooled], dim=1) # [B, 2 * emb_size]
-        output = self.mlp(combined) 
-        return output
+            drug_vec = d_cls_upd.squeeze(1)
+            prot_vec = p_cls_upd.squeeze(1)
+        else:
+            drug_vec = self.drug_pooling(hd, node_mask=(d_z != 0))
+            prot_vec = self.prot_pooling(hp, node_mask=(p_z != 0))
+
+        drug_vec = self.pool_norm_drug(drug_vec)
+        prot_vec = self.pool_norm_prot(prot_vec)
+
+        # --- Regression head ---
+        reg = self.regressor(torch.cat([drug_vec, prot_vec], dim=1)).squeeze(-1)
+
+        # --- Optional MLM logits (only for masked nodes) ---
+        drug_logits = prot_logits = None
+        if mlm_mask_drug is not None and mlm_mask_drug.any():
+            drug_logits = self.mlm_head_drug(hd[mlm_mask_drug])
+        if mlm_mask_prot is not None and mlm_mask_prot.any():
+            prot_logits = self.mlm_head_prot(hp[mlm_mask_prot])
+
+        return reg, drug_logits, prot_logits
 
 
 if __name__ == '__main__':

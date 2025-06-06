@@ -19,7 +19,8 @@ import torch.nn.functional as F
 try:
     # Attempt relative imports first, assuming src is a package
     from .model import DualGraphAttentionNetwork
-    from .utils.dataset import DrugProteinDataset, collate_drug_prot
+    from .utils.dataset import DrugProteinDataset, collate_drug_prot, pad_to
+    from .utils.unpaired_dataset import DrugOnlyDataset, ProtOnlyDataset
     from .utils.helper_functions import (
         set_seeds,
         count_params,
@@ -33,7 +34,8 @@ try:
 except ImportError:
     # Fallback for when src is not treated as a package (e.g., running script directly in src)
     from model import DualGraphAttentionNetwork
-    from utils.dataset import DrugProteinDataset, collate_drug_prot
+    from utils.dataset import DrugProteinDataset, collate_drug_prot, pad_to
+    from utils.unpaired_dataset import DrugOnlyDataset, ProtOnlyDataset
     from utils.helper_functions import (
         set_seeds,
         count_params,
@@ -46,6 +48,68 @@ except ImportError:
 
 torch.set_float32_matmul_precision("high")
 
+
+def collate_unpaired_drug(batch, max_nodes: int):
+    """Collate function for the unpaired drug dataset."""
+    # Batch is a list of (d_x, d_z, d_e, d_a) tuples from DrugMolecule.to_tensors()
+    H = max_nodes
+    drug_zs, drug_xs, drug_es, drug_as = [], [], [], []
+
+    for d_x, d_z, d_e, d_a in batch:
+        drug_zs.append(pad_to(d_z, (H,)))
+        drug_xs.append(pad_to(d_x, (H, d_x.size(-1))))
+        drug_es.append(pad_to(d_e, (H, H, d_e.size(-1))))
+        drug_as.append(pad_to(d_a, (H, H)))
+
+    return (
+        torch.stack(drug_zs),
+        torch.stack(drug_xs),
+        torch.stack(drug_es),
+        torch.stack(drug_as)
+    )
+
+def collate_unpaired_prot(batch, max_nodes: int):
+    """Collate function for the unpaired protein dataset."""
+    # Batch is a list of torch_geometric.data.Data objects
+    H = max_nodes
+    prot_zs, prot_xs, prot_es, prot_as = [], [], [], []
+    for protein_graph_data in batch:
+        p_x = protein_graph_data.x
+        p_edge_index = protein_graph_data.edge_index
+        p_edge_attr = protein_graph_data.edge_attr
+        N_prot_nodes = p_x.size(0)
+
+        if N_prot_nodes > H: # truncate
+            node_mask = torch.arange(H)
+            p_x = p_x[node_mask]
+            edge_mask = (p_edge_index[0] < H) & (p_edge_index[1] < H)
+            p_edge_index = p_edge_index[:, edge_mask]
+            p_edge_attr = p_edge_attr[edge_mask]
+
+        res_ids = torch.argmax(p_x[:, :20], dim=1).long() + 1
+        prot_zs.append(pad_to(res_ids, (H,)))
+        prot_node_dense_feats = p_x[:, 20:]
+        prot_xs.append(pad_to(prot_node_dense_feats, (H, prot_node_dense_feats.size(1))))
+
+        adj_prot = torch.zeros((H, H), dtype=torch.float32)
+        edge_attr_prot_dense = torch.zeros((H, H, p_edge_attr.size(-1)), dtype=torch.float32)
+
+        if p_edge_index.numel() > 0:
+            row, col = p_edge_index[0], p_edge_index[1]
+            adj_prot[row, col] = 1
+            adj_prot[col, row] = 1
+            edge_attr_prot_dense[row, col] = p_edge_attr
+            edge_attr_prot_dense[col, row] = p_edge_attr
+        
+        prot_as.append(adj_prot)
+        prot_es.append(edge_attr_prot_dense)
+    
+    return (
+        torch.stack(prot_zs),
+        torch.stack(prot_xs),
+        torch.stack(prot_es),
+        torch.stack(prot_as)
+    )
 
 # ---------------------------------------------------------------------------
 # TRAIN LOOP
@@ -111,8 +175,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
     mp_context = "spawn" if os.name != 'nt' else None # "spawn" is good for Linux/MacOS, None for Windows default
     if hasattr(args, 'mp_context'): mp_context = args.mp_context
 
-    loader_kwargs = dict(
-        batch_size=args.batch_size,
+    base_loader_kwargs = dict(
         num_workers=num_workers,
         pin_memory=(device.type == "cuda"),
         persistent_workers=(num_workers > 0), # Only if using workers
@@ -128,14 +191,40 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         prot_edge_feats=1   # As expected by protein graphs and model
     )
 
-    train_loader = DataLoader(train_ds, shuffle=True, collate_fn=collate_fn_configured, **loader_kwargs)
-    val_loader = DataLoader(val_ds, shuffle=False, collate_fn=collate_fn_configured, **loader_kwargs)
+    collate_unpaired_drug_configured = partial(collate_unpaired_drug, max_nodes=args.max_nodes)
+    collate_unpaired_prot_configured = partial(collate_unpaired_prot, max_nodes=args.max_nodes)
+
+    # ---- Semi-supervised data loaders (trick #2) ----------------------------
+    paired_loader = DataLoader(
+        train_ds,
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=collate_fn_configured,
+        **base_loader_kwargs
+    )
+
+    unl_drug_loader = DataLoader(
+        DrugOnlyDataset(train_ds),
+        batch_size=int(args.batch_size * args.unlabeled_ratio),
+        shuffle=True,
+        collate_fn=collate_unpaired_drug_configured,
+        **base_loader_kwargs
+    )
+
+    unl_prot_loader = DataLoader(
+        ProtOnlyDataset(train_ds),
+        batch_size=int(args.batch_size * args.unlabeled_ratio),
+        shuffle=True,
+        collate_fn=collate_unpaired_prot_configured,
+        **base_loader_kwargs
+    )
+    
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn_configured, **base_loader_kwargs)
     # test_loader = DataLoader(test_ds, shuffle=False, collate_fn=collate_fn_configured, **loader_kwargs) # If needed
 
     # ------------------------------------------------------------------
     # optimisation setup
     # ------------------------------------------------------------------
-    loss_func = nn.SmoothL1Loss(beta=args.huber_beta)
     optimiser = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimiser, mode='min', factor=args.scheduler_factor, patience=args.scheduler_patience
@@ -166,35 +255,44 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         train_epoch_labels = []
         train_seen_samples = 0
 
-        for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.max_epochs} [Train]"):
-            try:
-                # d_z, d_x, d_e, d_a, p_z, p_x (dense), p_e, p_a, labels
-                (d_z, d_x, d_e, d_a, p_z, p_x_dense, p_e, p_a, labels) = [item.to(device) for item in batch]
+        for (paired_batch, drug_batch, prot_batch) in zip(paired_loader,
+                                                          unl_drug_loader,
+                                                          unl_prot_loader):
+            # ---------- Paired data ----------
+            (d_z, d_x, d_e, d_a, p_z, p_x_dense, p_e, p_a, y) = [t.to(device) for t in paired_batch]
 
-                optimiser.zero_grad(set_to_none=True)
-                preds = model(d_z, d_x, d_e, d_a, p_z, p_x_dense, p_e, p_a).squeeze(-1)
-                
-                if torch.isnan(preds).any():
-                    print(f"Warning: NaN detected in training predictions. Skipping batch.")
-                    continue
-                loss = loss_func(preds, labels)
-                if torch.isnan(loss):
-                    print(f"Warning: NaN detected in training loss. Skipping batch.")
-                    continue
-                    
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), getattr(args, 'clip_grad_norm', 1.0))
-                optimiser.step()
+            # ---------- Create MLM masks & masked copies ----------
+            def _mask(z):
+                m = (torch.rand_like(z.float()) < args.mlm_mask_prob) & (z != 0)
+                z_ = z.clone()
+                z_[m] = 0
+                return z_, m
 
-                batch_size = labels.size(0)
-                train_epoch_loss += loss.item() * batch_size
-                train_epoch_preds.extend(preds.detach().cpu().tolist())
-                train_epoch_labels.extend(labels.detach().cpu().tolist())
-                train_seen_samples += batch_size
-                
-            except RuntimeError as e:
-                print(f"Runtime error in training batch: {str(e)}. Skipping batch.")
-                continue
+            d_z_masked, m_d = _mask(d_z)
+            p_z_masked, m_p = _mask(p_z)
+
+            optimiser.zero_grad()
+            y_pred, drug_logits, prot_logits = model(
+                d_z_masked, d_x, d_e, d_a,
+                p_z_masked, p_x_dense, p_e, p_a,
+                mlm_mask_drug=m_d, mlm_mask_prot=m_p)
+
+            reg_loss = F.mse_loss(y_pred, y)
+            mlm_loss = 0.0
+            if drug_logits is not None:
+                mlm_loss += F.cross_entropy(drug_logits, d_z[m_d], ignore_index=0)
+            if prot_logits is not None:
+                mlm_loss += F.cross_entropy(prot_logits, p_z[m_p], ignore_index=0)
+            loss = reg_loss + args.alpha_mlm * mlm_loss
+
+            loss.backward()
+            optimiser.step()
+
+            batch_size = y.size(0)
+            train_epoch_loss += loss.item() * batch_size
+            train_epoch_preds.extend(y_pred.detach().cpu().tolist())
+            train_epoch_labels.extend(y.detach().cpu().tolist())
+            train_seen_samples += batch_size
 
         if train_seen_samples == 0: 
             print("Warning: No samples processed in training epoch. Check data loader and dataset.")
@@ -209,7 +307,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
             t_ma = mae_func(torch.tensor(train_epoch_preds), torch.tensor(train_epoch_labels))
 
         # --- validation ------------------------------------------------
-        v_loss, v_ci, v_mse, v_mae = get_validation_metrics(val_loader, model, loss_func, device)
+        v_loss, v_ci, v_mse, v_mae = get_validation_metrics(val_loader, model, device)
         scheduler.step(v_loss)
 
         print(
@@ -239,7 +337,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
 # EVALUATION HELPERS (modified for CI calculation at epoch level)
 # ---------------------------------------------------------------------------
 
-def get_validation_metrics(loader, model, loss_func, device):
+def get_validation_metrics(loader, model, device):
     model.eval()
     epoch_loss = 0.0
     all_preds = []
@@ -250,10 +348,10 @@ def get_validation_metrics(loader, model, loss_func, device):
         for batch in tqdm(loader, desc="Evaluating	"):
             try:
                 (d_z, d_x, d_e, d_a, p_z, p_x_dense, p_e, p_a, labels) = [item.to(device) for item in batch]
-                preds = model(d_z, d_x, d_e, d_a, p_z, p_x_dense, p_e, p_a).squeeze(-1)
+                preds, _, _ = model(d_z, d_x, d_e, d_a, p_z, p_x_dense, p_e, p_a)
                 
                 if torch.isnan(preds).any(): continue
-                loss = loss_func(preds, labels)
+                loss = F.mse_loss(preds, labels)
                 if torch.isnan(loss): continue
                 
                 batch_size = labels.size(0)
@@ -500,6 +598,12 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--use_cross", action="store_true", help="Enable cross-attention between drug/protein branches.")
     parser.add_argument("--no_cross", action="store_false", dest="use_cross", help="Disable cross-attention.")
     parser.set_defaults(use_cross=True) # Default to using cross-attention
+    parser.add_argument('--alpha_mlm', type=float, default=0.1,
+                        help='Weight of MLM loss.')
+    parser.add_argument('--unlabeled_ratio', type=float, default=0.5,
+                        help='Fraction of each mini‑batch made of unlabeled graphs.')
+    parser.add_argument('--mlm_mask_prob', type=float, default=0.15,
+                        help='Probability of masking a node for MLM.')
     # parser.add_argument("--include_3d_drug", action="store_true", help="Include 3D coordinates for drug molecules if featurizer supports it.") # This is implicitly handled by DrugMolecule
 
     return parser

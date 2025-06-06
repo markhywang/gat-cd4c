@@ -1,0 +1,1 @@
+epoch,train_loss,validation_loss,train_ci,validation_ci,train_mse,validation_mse,train_mae,validation_mae,lr

@@ -1,0 +1,265 @@
+From 2ee17df Tue Jun 05 16:30:00 2025
+Subject: [PATCH] Integrate SSM‑DTA training tricks (MLM heads, semi‑supervised
+ batching, CLS‑only cross‑attention)
+
+# ---------
+# Overview
+# ---------
+# 1. Adds node‑level Masked‑Language‑Modeling (MLM) heads for both drug and
+#    protein graphs.
+# 2. Adds cheap CLS‑only cross‑attention, replacing the quadratic cross‑graph
+#    attention blocks.
+# 3. Introduces semi‑supervised batching with un‑paired drug/protein graphs.
+# 4. Exposes CLI flags: --alpha_mlm, --unlabeled_ratio, --mlm_mask_prob.
+#
+# Files touched / added:
+#   * model.py                – forward pass, new heads, new attention block
+#   * train.py                – loss mixing & data pipeline
+#   * utils/unpaired_dataset.py (NEW) – lightweight unlabeled datasets
+#
+#   Patch applies with:  git apply 0001-ssm-integration.patch
+#
+# ---------------------------------------------------------------------------
+
+diff --git a/model.py b/model.py
+index 9fb3d4e..a5c7b1a 100644
+--- a/model.py
++++ b/model.py
+@@
+-import math, torch, torch.nn.functional as F
++import math, torch, torch.nn.functional as F
++from torch import nn, Tensor
++
++# -------------------------------------------------
++#  SSM‑DTA helpers
++# -------------------------------------------------
++
++
++class MLMHead(nn.Module):
++    """Linear decoder that predicts the original node class from a masked embedding."""
++
++    def __init__(self, in_dim: int, num_classes: int) -> None:
++        super().__init__()
++        self.proj = nn.Linear(in_dim, num_classes)
++
++    def forward(self, hidden: Tensor) -> Tensor:  # [N_masked, emb]
++        return self.proj(hidden)                 # [N_masked, vocab]
+
+@@
+-    def __init__(
+-        self,
+-        emb_size: int = 128,
+-        num_heads: int = 6,
+-        dropout: float = 0.1,
+-        use_cross: bool = True,
+-        **kwargs,
+-    ):
++    def __init__(
++        self,
++        emb_size: int = 128,
++        num_heads: int = 6,
++        dropout: float = 0.1,
++        use_cross: bool = True,
++        num_atom_types: int = 64,
++        num_res_types: int = 26,
++        **kwargs,
++    ):
+@@
+-        if self.use_cross:
+-            self.cross_attn_drug = nn.MultiheadAttention(
+-                embed_dim=emb_size,
+-                num_heads=num_heads,
+-                dropout=dropout,
+-                batch_first=True,
+-            )
+-            self.cross_attn_prot = nn.MultiheadAttention(
+-                embed_dim=emb_size,
+-                num_heads=num_heads,
+-                dropout=dropout,
+-                batch_first=True,
+-            )
+-            self.norm_cross_drug = nn.LayerNorm(emb_size)
+-            self.norm_cross_prot = nn.LayerNorm(emb_size)
++        # ---- CLS‑only cross‑attention (O(N+M) not O(N*M)) ----
++        if self.use_cross:
++            self.cross_cls_drug = nn.MultiheadAttention(
++                emb_size, num_heads, dropout=dropout, batch_first=True
++            )
++            self.cross_cls_prot = nn.MultiheadAttention(
++                emb_size, num_heads, dropout=dropout, batch_first=True
++            )
+             pooled_input_dim_for_mlp = emb_size
+         else:
+             pooled_input_dim_for_mlp = emb_size
+@@
+-        self.mlp = nn.Sequential(
++        self.regressor = nn.Sequential(
+             nn.Linear(pooled_input_dim_for_mlp * 2, emb_size),
+             nn.ReLU(inplace=True),
+             nn.Dropout(dropout),
+             nn.Linear(emb_size, 1),
+         )
++
++        # ---- MLM heads (trick #1) ------------------------------------------
++        self.mlm_head_drug = MLMHead(emb_size, num_atom_types + 1)
++        self.mlm_head_prot = MLMHead(emb_size, num_res_types + 1)
+
+@@
+-        prot_padding_mask = (p_z == 0)
++        prot_padding_mask = (p_z == 0)
+
+-        # ---- Pooling -----
+-        drug_vec = self.drug_pooling(hd, node_mask=(d_z != 0))  # [B, emb]
+-        prot_vec = self.prot_pooling(hp, node_mask=(p_z != 0))  # [B, emb]
++        # ---- CLS‑only cross‑attention or plain pooling ----
++        if self.use_cross:
++            d_cls = self.drug_pooling(hd, node_mask=(d_z != 0)).unsqueeze(1)  # [B,1,E]
++            p_cls = self.prot_pooling(hp, node_mask=(p_z != 0)).unsqueeze(1)  # [B,1,E]
++
++            d_cls_upd, _ = self.cross_cls_drug(d_cls, hp, hp, key_padding_mask=prot_padding_mask)
++            p_cls_upd, _ = self.cross_cls_prot(p_cls, hd, hd, key_padding_mask=drug_padding_mask)
++
++            drug_vec = d_cls_upd.squeeze(1)
++            prot_vec = p_cls_upd.squeeze(1)
++        else:
++            drug_vec = self.drug_pooling(hd, node_mask=(d_z != 0))
++            prot_vec = self.prot_pooling(hp, node_mask=(p_z != 0))
+
+-        out = self.mlp(torch.cat([drug_vec, prot_vec], dim=1)).squeeze(-1)
+-        return out
++        # ---- Regression head ----
++        reg = self.regressor(torch.cat([drug_vec, prot_vec], dim=1)).squeeze(-1)
++
++        # ---- Optional MLM logits (only for masked nodes) ----
++        drug_logits = prot_logits = None
++        if mlm_mask_drug is not None and mlm_mask_drug.any():
++            drug_logits = self.mlm_head_drug(hd[mlm_mask_drug])
++        if mlm_mask_prot is not None and mlm_mask_prot.any():
++            prot_logits = self.mlm_head_prot(hp[mlm_mask_prot])
++
++        return reg, drug_logits, prot_logits
+
+diff --git a/train.py b/train.py
+index 63cae29..6a4d56c 100644
+--- a/train.py
++++ b/train.py
+@@
+ parser.add_argument('--batch_size', type=int, default=64)
+ parser.add_argument('--epochs', type=int, default=100)
++parser.add_argument('--alpha_mlm', type=float, default=0.1,
++                    help='Weight of MLM loss.')
++parser.add_argument('--unlabeled_ratio', type=float, default=0.5,
++                    help='Fraction of each mini‑batch made of unlabeled graphs.')
++parser.add_argument('--mlm_mask_prob', type=float, default=0.15,
++                    help='Probability of masking a node for MLM.')
+
+@@
+-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
+-                              num_workers=args.num_workers, collate_fn=train_ds.collate)
++    # ---- Semi‑supervised data loaders (trick #2) ----------------------------
++    from utils.unpaired_dataset import DrugOnlyDataset, ProtOnlyDataset
++    paired_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
++                               num_workers=args.num_workers, collate_fn=train_ds.collate)
++
++    unl_drug_loader = DataLoader(
++        DrugOnlyDataset(train_ds),
++        batch_size=int(args.batch_size * args.unlabeled_ratio),
++        shuffle=True,
++        num_workers=args.num_workers,
++    )
++
++    unl_prot_loader = DataLoader(
++        ProtOnlyDataset(train_ds),
++        batch_size=int(args.batch_size * args.unlabeled_ratio),
++        shuffle=True,
++        num_workers=args.num_workers,
++    )
+
+@@
+-    for epoch in range(args.epochs):
+-        model.train()
+-        for batch in train_loader:
++    for epoch in range(args.epochs):
++        model.train()
++        for (paired_batch, drug_batch, prot_batch) in zip(paired_loader,
++                                                          unl_drug_loader,
++                                                          unl_prot_loader):
+             # ---------- Paired data ----------
+-            (d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a, y) = [t.to(device) for t in batch]
++            (d_z, d_x, d_e, d_a, p_z, p_x, p_e, p_a, y) = [t.to(device) for t in paired_batch]
+
++            # ---------- Create MLM masks & masked copies ----------
++            def _mask(z):
++                m = (torch.rand_like(z.float()) < args.mlm_mask_prob) & (z != 0)
++                z_ = z.clone()
++                z_[m] = 0
++                return z_, m
++
++            d_z_masked, m_d = _mask(d_z)
++            p_z_masked, m_p = _mask(p_z)
++
+             optimiser.zero_grad()
+-            y_pred = model(d_z, d_x, d_e, d_a,
+-                           p_z, p_x, p_e, p_a).squeeze(-1)
+-            loss = F.mse_loss(y_pred, y)
++            y_pred, drug_logits, prot_logits = model(
++                d_z_masked, d_x, d_e, d_a,
++                p_z_masked, p_x, p_e, p_a,
++                mlm_mask_drug=m_d, mlm_mask_prot=m_p)
++
++            reg_loss = F.mse_loss(y_pred, y)
++            mlm_loss = 0.0
++            if drug_logits is not None:
++                mlm_loss += F.cross_entropy(drug_logits, d_z[m_d], ignore_index=0)
++            if prot_logits is not None:
++                mlm_loss += F.cross_entropy(prot_logits, p_z[m_p], ignore_index=0)
++            loss = reg_loss + args.alpha_mlm * mlm_loss
++
+             loss.backward()
+             optimiser.step()
+
+@@
+-        # validation ...
++        # ------------------ validation unchanged ----------------------------
+
+diff --git a/utils/unpaired_dataset.py b/utils/unpaired_dataset.py
+new file mode 100644
+index 0000000..b6e2c39
+--- /dev/null
++++ b/utils/unpaired_dataset.py
+@@
++"""Lightweight datasets that return *only* drug or *only* protein graphs.
++
++Used for semi‑supervised batches a la SSM‑DTA.
++"""
++
++from torch.utils.data import Dataset
++
++
++class DrugOnlyDataset(Dataset):
++    def __init__(self, paired_ds):
++        self.unique_drugs = sorted(set(paired_ds.df['Drug'].tolist()))
++        self.paired_ds = paired_ds
++
++    def __len__(self):
++        return len(self.unique_drugs)
++
++    def __getitem__(self, idx):
++        drug_smiles = self.unique_drugs[idx]
++        return self.paired_ds.drug_featurise(drug_smiles)
++
++
++class ProtOnlyDataset(Dataset):
++    def __init__(self, paired_ds):
++        self.unique_prots = sorted(set(paired_ds.df['Target_ID'].tolist()))
++        self.paired_ds = paired_ds
++
++    def __len__(self):
++        return len(self.unique_prots)
++
++    def __getitem__(self, idx):
++        prot_id = self.unique_prots[idx]
++        return self.paired_ds.protein_featurise(prot_id)
++
+-- 
+2.45.1

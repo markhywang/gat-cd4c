@@ -228,7 +228,7 @@ def plot_loss_curves(results):
     Plots training curves from a results dictionary.
 
     Args:
-        results (pd.DataFrame): DataFrame containing 'train_loss', 'train_acc',
+        results (pd.DataFrame): DataFrame containing 'train_loss', 'train_ci',
                                 'validation_loss', and 'validation_acc' columns.
 
     Returns:
@@ -239,16 +239,16 @@ def plot_loss_curves(results):
         >> import torch
         >> data = {'train_loss': [torch.tensor(0.5), torch.tensor(0.4)],
         ..         'validation_loss': [torch.tensor(0.6), torch.tensor(0.5)],
-        ..         'train_acc': [torch.tensor(0.8), torch.tensor(0.85)],
-        ..         'validation_acc': [torch.tensor(0.75), torch.tensor(0.8)]}
+        ..         'train_ci': [torch.tensor(0.8), torch.tensor(0.85)],
+        ..         'validation_ci': [torch.tensor(0.75), torch.tensor(0.8)]}
         >> df = pd.DataFrame(data)
         >> plot_loss_curves(df)
     """
     loss = [to_cpu_scalar(x) for x in results["train_loss"].tolist()]
     validation_loss = [to_cpu_scalar(x) for x in results["validation_loss"].tolist()]
 
-    accuracy = [to_cpu_scalar(x) for x in results["train_acc"].tolist()]
-    validation_accuracy = [to_cpu_scalar(x) for x in results["validation_acc"].tolist()]
+    accuracy = [to_cpu_scalar(x) for x in results["train_ci"].tolist()]
+    validation_accuracy = [to_cpu_scalar(x) for x in results["validation_ci"].tolist()]
 
     epochs = range(results.shape[0])
 
@@ -264,8 +264,8 @@ def plot_loss_curves(results):
 
     # Plot accuracy
     plt.subplot(1, 2, 2)
-    plt.plot(epochs, accuracy, label="train_accuracy")
-    plt.plot(epochs, validation_accuracy, label="validation_accuracy")
+    plt.plot(epochs, accuracy, label="train_ci")
+    plt.plot(epochs, validation_accuracy, label="validation_ci")
     plt.title("Accuracy")
     plt.xlabel("Epochs")
     plt.legend()
