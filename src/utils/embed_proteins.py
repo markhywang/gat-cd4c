@@ -478,40 +478,59 @@ class ProteinGraphBuilder:
         esm: Optional[torch.Tensor] = None,
         ligand_coords: Optional[torch.Tensor] = None,
     ) -> Data:
-        """Construct a **torch_geometric** graph for the given PDB file.
+        """Build a protein graph from a PDB file.
 
-        If *esm* is provided, it is concatenated to Cα coordinates (re‑creates
-        the old 1 283‑D representation).  Otherwise the node feature is:
+        Args:
+            pdb_path: Path to PDB file
+            seq: Optional sequence to validate against
+            esm: Optional ESM embeddings [L, 1280]
+            ligand_coords: Optional ligand coordinates for pocket cropping
 
-            one‑hot(20) + charge(1) + coords(3) = 24‑D
+        Returns:
+            torch_geometric.data.Data object with:
+                - x: Node features [N, F] (one-hot AA + charge + coords)
+                - edge_index: Edge indices [2, E]
+                - edge_attr: Edge features [E, 1] (distances)
         """
-        pdb_path = pathlib.Path(pdb_path)
-        coords, aa3 = self._extract_ca(pdb_path)
+        coords, aa_list = self._extract_ca(pathlib.Path(pdb_path))
+        
+        # Sanitize coordinates
+        coords = torch.nan_to_num(coords, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # --- pocket cropping ----------------------------------------------
-        coords, mask = self._crop_to_pocket(coords, ligand_coords)
-        aa3 = [a for a, keep in zip(aa3, mask) if keep]
-        if esm is not None:
-            if coords.shape[0] != esm[mask].shape[0]:
-                raise ValueError("Seq/structure length mismatch for ESM embedding")
-            node_x = torch.cat([esm[mask], coords], dim=1)
-        else:
-            if seq is not None and len(seq) != coords.shape[0]:
-                raise ValueError("Seq/structure length mismatch for one‑hot pathway")
-            one_hot = self._aa_one_hot(aa3)
-            charges = self._charges(aa3)
-            node_x = torch.cat([one_hot, charges, coords], dim=1)
-
+        # Compute pairwise distances
         dist = torch.cdist(coords, coords)
-        within = (dist < self.cutoff) & (dist > 0)
-        idx = torch.arange(coords.shape[0] - 1, dtype=torch.long)
-        within[idx, idx + 1] = True
-        within[idx + 1, idx] = True
+        dist = torch.nan_to_num(dist, nan=0.0, posinf=1e4)  # 1e4 Å ≫ cutoff
 
+        # Build edges
+        within = (dist > 0) & (dist < self.cutoff)
         edge_index = within.nonzero(as_tuple=False).t()
         edge_attr = dist[within].unsqueeze(-1)
 
-        return Data(x=node_x, pos=coords, edge_index=edge_index, edge_attr=edge_attr)
+        # Build node features
+        node_x = torch.cat([
+            self._aa_one_hot(aa_list),
+            self._charges(aa_list).unsqueeze(-1),
+            coords
+        ], dim=-1)
+
+        # Optional: crop to pocket
+        if self.pocket_radius is not None and ligand_coords is not None:
+            node_mask, edge_mask = self._crop_to_pocket(coords, ligand_coords)
+            node_x = node_x[node_mask]
+            edge_index = edge_index[:, edge_mask]
+            edge_attr = edge_attr[edge_mask]
+
+        # Optional: add ESM embeddings
+        if esm is not None:
+            if len(esm) != len(aa_list):
+                raise ValueError(f"ESM embeddings length {len(esm)} does not match sequence length {len(aa_list)}")
+            node_x = torch.cat([node_x, esm], dim=-1)
+
+        return Data(
+            x=node_x,
+            edge_index=edge_index,
+            edge_attr=edge_attr
+        )
 
     def load(self, identifier: str) -> Data:
         """Load protein graph from file."""

@@ -45,6 +45,11 @@ def pad_to(x: torch.Tensor, shape: tuple):
     return F.pad(x, pad, mode='constant', value=0)
 
 
+def clean(t: torch.Tensor) -> torch.Tensor:
+    # replaces nan with 0, clamps ±inf to large finite sentinels
+    return torch.nan_to_num(t, nan=0.0, posinf=1e4, neginf=-1e4)
+
+
 def collate_drug_prot(
         batch: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Data, Any]], # Modified type hint for protein part
         hard_limit: int = 64, # Max nodes for padding
@@ -58,65 +63,43 @@ def collate_drug_prot(
 
     H = hard_limit # Max nodes (atoms for drugs, residues for proteins)
 
-    # for d_x, d_z, d_e, d_a, protein_embedding, label in batch: # Old custom embedding version
-    for d_x, d_z, d_e, d_a, protein_graph_data, label in batch: # New: protein_graph_data is a torch_geometric.data.Data object
+    for d_x, d_z, d_e, d_a, protein_graph_data, label in batch:
         # ───────────── drug ─────────────
         drug_zs.append(pad_to(d_z, (H,)))
-        drug_xs.append(pad_to(d_x, (H, d_x.size(-1))))
-        drug_es.append(pad_to(d_e, (H, H, drug_edge_feats)))
+        drug_xs.append(clean(pad_to(d_x, (H, d_x.size(-1)))))
+        drug_es.append(clean(pad_to(d_e, (H, H, drug_edge_feats))))
         drug_as.append(pad_to(d_a, (H, H)))
 
         # ─────────── protein ────────────
-        # protein_graph_data is expected to be a torch_geometric.data.Data object
-        # It should have: p_x (node features), p_edge_index, p_edge_attr
-        
-        p_x = protein_graph_data.x # Node features [N_prot_nodes, F_prot_node] (F_prot_node=24)
-        p_edge_index = protein_graph_data.edge_index # Edge indices [2, num_edges]
-        p_edge_attr = protein_graph_data.edge_attr # Edge attributes [num_edges, F_prot_edge] (F_prot_edge=1)
+        p_x = protein_graph_data.x
+        p_edge_index = protein_graph_data.edge_index
+        p_edge_attr = protein_graph_data.edge_attr
 
         N_prot_nodes = p_x.size(0)
 
-        if N_prot_nodes > H: # truncate to hard_limit
-            # Simple truncation: keep first H nodes and their induced subgraph
+        if N_prot_nodes > H:
             node_mask = torch.arange(H)
             p_x = p_x[node_mask]
-            
-            # Filter edges: both source and target nodes must be within the first H nodes
             edge_mask = (p_edge_index[0] < H) & (p_edge_index[1] < H)
             p_edge_index = p_edge_index[:, edge_mask]
             p_edge_attr = p_edge_attr[edge_mask]
             N_prot_nodes = H
-        
-        # (1) residue-type integer IDs (derive from first 20 dims of one-hot node features)
-        # Node features in .pt are: one_hot_AA(20) + charge(1) + coords(3) = 24 dims
-        # The FeaturePrep in the model will use these IDs to create embeddings.
-        res_ids = torch.argmax(p_x[:, :20], dim=1).long() + 1 # 1-20, 0=pad
+
+        res_ids = torch.argmax(p_x[:, :20], dim=1).long() + 1
         prot_zs.append(pad_to(res_ids, (H,)))
 
-        # (2) protein node features (the part FeaturePrep concatenates: charge + coords)
-        # The FeaturePrep module expects the raw node features (excluding IDs part if it embeds them)
-        # For proteins, prot_prep = FeaturePrep(num_res_types, z_emb_dim)
-        # It will embed res_ids. The remaining features from p_x (charge, coords) should be passed.
-        # p_x here is [N, 24]. We pass p_x[:, 20:] which are charge (1) and coords (3) = 4 features.
-        # So, prot_in_features for the model's GAT part will be z_emb_dim (from FeaturePrep) + 4.
-        # This means prot_in_features argument to DualGraphAttentionNetwork's __init__ should be 4.
-        prot_node_dense_feats = p_x[:, 20:] # [N_prot_nodes, 4] (charge, x, y, z)
+        prot_node_dense_feats = clean(p_x[:, 20:])
         prot_xs.append(pad_to(prot_node_dense_feats, (H, prot_node_dense_feats.size(1))))
 
-
-        # (3) dense edge-attributes & adjacency matrix for proteins
         adj_prot = torch.zeros((H, H), dtype=torch.float32)
         edge_attr_prot_dense = torch.zeros((H, H, prot_edge_feats), dtype=torch.float32)
 
-        if p_edge_index.numel() > 0: # Check if there are any edges after potential truncation
+        if p_edge_index.numel() > 0:
             row, col = p_edge_index[0], p_edge_index[1]
             adj_prot[row, col] = 1
-            adj_prot[col, row] = 1 # Assuming undirected, though original GAT handles directedness via attention
-            # Populate edge attributes, ensure it's [H,H,F_prot_edge]
-            # This assumes p_edge_attr corresponds to edges in p_edge_index
-            edge_attr_prot_dense[row, col] = p_edge_attr 
-            # If edges are undirected and attributes are symmetric, or if GAT sums/averages edge features for both directions:
-            edge_attr_prot_dense[col, row] = p_edge_attr # Or handle as per model's expectation
+            adj_prot[col, row] = 1
+            edge_attr_prot_dense[row, col] = clean(p_edge_attr)
+            edge_attr_prot_dense[col, row] = clean(p_edge_attr)
 
         prot_as.append(adj_prot)
         prot_es.append(edge_attr_prot_dense)

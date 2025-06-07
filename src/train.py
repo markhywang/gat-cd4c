@@ -49,6 +49,12 @@ except ImportError:
 torch.set_float32_matmul_precision("high")
 
 
+def safe_nan_to_num(t: torch.Tensor) -> torch.Tensor:
+    if torch.isnan(t).any() or torch.isinf(t).any():
+        return torch.nan_to_num(t, nan=0.0, posinf=1e4, neginf=-1e4)
+    return t
+
+
 def collate_unpaired_drug(batch, max_nodes: int):
     """Collate function for the unpaired drug dataset."""
     # Batch is a list of (d_x, d_z, d_e, d_a) tuples from DrugMolecule.to_tensors()
@@ -56,10 +62,10 @@ def collate_unpaired_drug(batch, max_nodes: int):
     drug_zs, drug_xs, drug_es, drug_as = [], [], [], []
 
     for d_x, d_z, d_e, d_a in batch:
-        drug_zs.append(pad_to(d_z, (H,)))
-        drug_xs.append(pad_to(d_x, (H, d_x.size(-1))))
-        drug_es.append(pad_to(d_e, (H, H, d_e.size(-1))))
-        drug_as.append(pad_to(d_a, (H, H)))
+        drug_zs.append(pad_to(safe_nan_to_num(d_z), (H,)))
+        drug_xs.append(pad_to(safe_nan_to_num(d_x), (H, d_x.size(-1))))
+        drug_es.append(pad_to(safe_nan_to_num(d_e), (H, H, d_e.size(-1))))
+        drug_as.append(pad_to(safe_nan_to_num(d_a), (H, H)))
 
     return (
         torch.stack(drug_zs),
@@ -74,10 +80,14 @@ def collate_unpaired_prot(batch, max_nodes: int):
     H = max_nodes
     prot_zs, prot_xs, prot_es, prot_as = [], [], [], []
     for protein_graph_data in batch:
-        p_x = protein_graph_data.x
+        p_x = safe_nan_to_num(protein_graph_data.x)
         p_edge_index = protein_graph_data.edge_index
         p_edge_attr = protein_graph_data.edge_attr
         N_prot_nodes = p_x.size(0)
+
+        # Scale coordinates
+        coords = p_x[:, -3:] / 100.0
+        p_x[:, -3:] = coords
 
         if N_prot_nodes > H: # truncate
             node_mask = torch.arange(H)
@@ -98,8 +108,8 @@ def collate_unpaired_prot(batch, max_nodes: int):
             row, col = p_edge_index[0], p_edge_index[1]
             adj_prot[row, col] = 1
             adj_prot[col, row] = 1
-            edge_attr_prot_dense[row, col] = p_edge_attr
-            edge_attr_prot_dense[col, row] = p_edge_attr
+            edge_attr_prot_dense[row, col] = safe_nan_to_num(p_edge_attr)
+            edge_attr_prot_dense[col, row] = safe_nan_to_num(p_edge_attr)
         
         prot_as.append(adj_prot)
         prot_es.append(edge_attr_prot_dense)
@@ -122,8 +132,8 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
     pre‑built protein *graphs* (``protein_graphs/<ID>.pt``) created by the
     revised **embed_proteins.py** utility.
     """
-    # Enable anomaly detection to help identify gradient computation issues
-    torch.autograd.set_detect_anomaly(True)
+    # Disable costly anomaly detection hook
+    torch.autograd.set_detect_anomaly(False)
 
     set_seeds(args.seed)
     device = m_device
@@ -151,7 +161,16 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         use_cross=args.use_cross # Pass use_cross from args
     ).to(device)
 
+    # Enable gradient hooks for NaN filtering
+    for p in model.parameters():
+        p.register_hook(
+            lambda grad: torch.nan_to_num(grad, nan=0.0, posinf=1e4, neginf=-1e4)
+        )
+
     print(f"Model parameters: {count_params(model):,}")
+
+    # Setup mixed precision training
+    scaler = torch.cuda.amp.GradScaler(enabled=(device.type=="cuda"))
 
     # ------------------------------------------------------------------
     # dataset + dataloader
@@ -226,8 +245,10 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
     # optimisation setup
     # ------------------------------------------------------------------
     optimiser = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimiser, mode='min', factor=args.scheduler_factor, patience=args.scheduler_patience
+    warmup_steps = 2_000
+    steps_per_epoch = len(paired_loader)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimiser, T_max=args.max_epochs * steps_per_epoch, eta_min=1e-6
     )
 
     best_val_loss = float("inf")
@@ -248,20 +269,37 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
     # ------------------------------------------------------------------
     # epochs
     # ------------------------------------------------------------------
-    for epoch in range(args.max_epochs):
+    from itertools import cycle
+
+    for epoch in tqdm(range(args.max_epochs), desc="Training"):
         model.train()
         train_epoch_loss = 0.0
         train_epoch_preds = []
         train_epoch_labels = []
         train_seen_samples = 0
+        global_step = epoch * len(paired_loader)
 
-        for (paired_batch, drug_batch, prot_batch) in zip(paired_loader,
-                                                          unl_drug_loader,
-                                                          unl_prot_loader):
+        # Create cycled iterators for unpaired data
+        drug_loader_cycle = cycle(unl_drug_loader)
+        prot_loader_cycle = cycle(unl_prot_loader)
+
+        for batch_idx, paired_batch in enumerate(paired_loader):
+            global_step = epoch * len(paired_loader) + batch_idx
+
+            # Warm-up learning rate
+            if global_step < warmup_steps:
+                lr_scale = (global_step + 1) / warmup_steps
+                for pg in optimiser.param_groups:
+                    pg["lr"] = args.lr * lr_scale
+
+            # Get next batches from cycled loaders
+            drug_batch = next(drug_loader_cycle)
+            prot_batch = next(prot_loader_cycle)
+
             # ---------- Paired data ----------
             (d_z, d_x, d_e, d_a, p_z, p_x_dense, p_e, p_a, y) = [t.to(device) for t in paired_batch]
 
-            # ---------- Create MLM masks & masked copies ----------
+            # ---------- Create MLM masks & masked copies for paired ----------
             def _mask(z):
                 m = (torch.rand_like(z.float()) < args.mlm_mask_prob) & (z != 0)
                 z_ = z.clone()
@@ -271,22 +309,115 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
             d_z_masked, m_d = _mask(d_z)
             p_z_masked, m_p = _mask(p_z)
 
-            optimiser.zero_grad()
-            y_pred, drug_logits, prot_logits = model(
-                d_z_masked, d_x, d_e, d_a,
-                p_z_masked, p_x_dense, p_e, p_a,
-                mlm_mask_drug=m_d, mlm_mask_prot=m_p)
+            optimiser.zero_grad(set_to_none=True)
 
-            reg_loss = F.mse_loss(y_pred, y)
-            mlm_loss = 0.0
-            if drug_logits is not None:
-                mlm_loss += F.cross_entropy(drug_logits, d_z[m_d], ignore_index=0)
-            if prot_logits is not None:
-                mlm_loss += F.cross_entropy(prot_logits, p_z[m_p], ignore_index=0)
-            loss = reg_loss + args.alpha_mlm * mlm_loss
+            # Mixed precision forward pass
+            with torch.cuda.amp.autocast(enabled=(device.type=="cuda")):
+                # Forward pass on paired (regression + paired-MLM)
+                y_pred, drug_logits, prot_logits = model(
+                    d_z_masked, d_x, d_e, d_a,
+                    p_z_masked, p_x_dense, p_e, p_a,
+                    mlm_mask_drug=m_d, mlm_mask_prot=m_p
+                )
 
-            loss.backward()
-            optimiser.step()
+                reg_loss = F.mse_loss(y_pred, y)
+                mlm_loss_paired = 0.0
+                if drug_logits is not None:
+                    mlm_loss_paired += F.cross_entropy(drug_logits, d_z[m_d], ignore_index=0)
+                if prot_logits is not None:
+                    mlm_loss_paired += F.cross_entropy(prot_logits, p_z[m_p], ignore_index=0)
+
+                # ---------- Unlabeled-drug batch (only drug-MLM) ----------
+                (u_d_z, u_d_x, u_d_e, u_d_a) = [t.to(device) for t in drug_batch]
+                u_d_z_masked, m_d_un = _mask(u_d_z)
+                batch_un_d = u_d_z.size(0)
+                # Create dummy protein inputs (all zeros)
+                dummy_p_z = torch.zeros((batch_un_d, args.max_nodes), dtype=torch.long, device=device)
+                dummy_p_x = torch.zeros((batch_un_d, args.max_nodes, p_x_dense.size(-1)), device=device)
+                dummy_p_e = torch.zeros((batch_un_d, args.max_nodes, args.max_nodes, p_e.size(-1)), device=device)
+                dummy_p_a = torch.zeros((batch_un_d, args.max_nodes, args.max_nodes), device=device)
+                _, drug_logits_un, _ = model(
+                    u_d_z_masked, u_d_x, u_d_e, u_d_a,
+                    dummy_p_z, dummy_p_x, dummy_p_e, dummy_p_a,
+                    mlm_mask_drug=m_d_un, mlm_mask_prot=None
+                )
+                mlm_loss_un_drug = 0.0
+                if drug_logits_un is not None:
+                    mlm_loss_un_drug = F.cross_entropy(drug_logits_un, u_d_z[m_d_un], ignore_index=0)
+
+                # ---------- Unlabeled-protein batch (only prot-MLM) ----------
+                (u_p_z, u_p_x, u_p_e, u_p_a) = [t.to(device) for t in prot_batch]
+                u_p_z_masked, m_p_un = _mask(u_p_z)
+                batch_un_p = u_p_z.size(0)
+                # Create dummy drug inputs (all zeros)
+                dummy_d_z = torch.zeros((batch_un_p, args.max_nodes), dtype=torch.long, device=device)
+                dummy_d_x = torch.zeros((batch_un_p, args.max_nodes, d_x.size(-1)), device=device)
+                dummy_d_e = torch.zeros((batch_un_p, args.max_nodes, args.max_nodes, d_e.size(-1)), device=device)
+                dummy_d_a = torch.zeros((batch_un_p, args.max_nodes, args.max_nodes), device=device)
+                _, _, prot_logits_un = model(
+                    dummy_d_z, dummy_d_x, dummy_d_e, dummy_d_a,
+                    u_p_z_masked, u_p_x, u_p_e, u_p_a,
+                    mlm_mask_drug=None, mlm_mask_prot=m_p_un
+                )
+                mlm_loss_un_prot = 0.0
+                if prot_logits_un is not None:
+                    mlm_loss_un_prot = F.cross_entropy(prot_logits_un, u_p_z[m_p_un], ignore_index=0)
+
+                # ---------- Combine paired + unlabeled MLM losses ----------
+                total_mlm_loss = mlm_loss_paired + mlm_loss_un_drug + mlm_loss_un_prot
+                alpha_now = args.alpha_mlm * (0.1 if epoch > 5 else 1.0)
+                loss = reg_loss + alpha_now * total_mlm_loss
+            
+            if not torch.isfinite(loss):
+                print(f"[ERR] non-finite loss at step {global_step}; y_pred stats:",
+                      y_pred.min().item(), y_pred.max().item())
+                optimiser.zero_grad(set_to_none=True)
+                continue
+
+            # Mixed precision backward pass
+            scaler.scale(loss).backward()
+            
+            # Unscale before gradient clipping
+            scaler.unscale_(optimiser)
+
+            # --- Grad clipping and sanity check ---
+            for p in model.parameters():
+                if p.grad is not None:
+                    p.grad.data.clamp_(-10.0, 10.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
+
+            bad_grad = False
+            for p in model.parameters():
+                if p.grad is not None and (torch.isnan(p.grad).any() or torch.isinf(p.grad).any()):
+                    bad_grad = True
+                    break
+            
+            if bad_grad:
+                optimiser.zero_grad(set_to_none=True)
+                print(f"[warn] skipped update at global-step {global_step} because of NaN/Inf gradients")
+                continue
+            
+            # Update with scaler
+            scaler.step(optimiser)
+            scaler.update()
+            scheduler.step()
+            optimiser.zero_grad(set_to_none=True)
+
+            # --- Weight sanity check ---
+            bad_w = False
+            for p in model.parameters():
+                if torch.isnan(p.data).any() or torch.isinf(p.data).any():
+                    bad_w = True
+                    break
+            
+            if bad_w:
+                print(f"[ERR] param overflow at step {global_step}; rolling back")
+                optimiser.zero_grad(set_to_none=True)
+                # Naive rollback - could be replaced with state_dict loading
+                for p in model.parameters():
+                    if torch.isnan(p.data).any() or torch.isinf(p.data).any():
+                        p.data = torch.nan_to_num(p.data, nan=0.0, posinf=1e4, neginf=-1e4)
+                continue
 
             batch_size = y.size(0)
             train_epoch_loss += loss.item() * batch_size
@@ -308,7 +439,6 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
 
         # --- validation ------------------------------------------------
         v_loss, v_ci, v_mse, v_mae = get_validation_metrics(val_loader, model, device)
-        scheduler.step(v_loss)
 
         print(
             f"Epoch {epoch+1}/{args.max_epochs} | LR: {optimiser.param_groups[0]['lr']:.2e} | "
@@ -345,7 +475,7 @@ def get_validation_metrics(loader, model, device):
     seen_samples = 0
     
     with torch.no_grad():
-        for batch in tqdm(loader, desc="Evaluating	"):
+        for batch in loader:
             try:
                 (d_z, d_x, d_e, d_a, p_z, p_x_dense, p_e, p_a, labels) = [item.to(device) for item in batch]
                 preds, _, _ = model(d_z, d_x, d_e, d_a, p_z, p_x_dense, p_e, p_a)

@@ -92,20 +92,18 @@ class CoAttention(nn.Module):
 # -----------------------------------------------------------------------------
 # Graph transformer building blocks ------------------------------------------
 # -----------------------------------------------------------------------------
-
-
 class GraphAttentionLayer(nn.Module):
-    """Single message‑passing layer (edge‑aware multi‑head attention)."""
+    """Single message‑passing layer (edge‑aware multi‑head attention) with NaN‑safe soft‑max."""
 
     def __init__(
         self,
         device: Union[str, torch.device],
         in_features: int,
         out_features: int,
-        num_edge_features: int, # Number of features for each edge
+        num_edge_features: int,
         num_attn_heads: int = 1,
         dropout: float = 0.2,
-        mlp_dropout: float = 0.2, # Dropout for the MLP part of the layer
+        mlp_dropout: float = 0.2,
         use_leaky_relu: bool = True,
     ) -> None:
         super().__init__()
@@ -114,31 +112,33 @@ class GraphAttentionLayer(nn.Module):
         self.num_attn_heads = num_attn_heads
         self.out_features_per_head = out_features // num_attn_heads
 
-        # node & edge preprocessing --------------------------------------------
-        self.node_projection = nn.Linear(in_features, out_features) # Projects node features to out_features (sum over heads)
+        # projections & normalisation ---------------------------------------
+        self.node_projection = nn.Linear(in_features, out_features)
         self.layer_norm_1 = nn.LayerNorm(in_features)
 
-        if self.num_edge_features > 0:
+        if num_edge_features > 0:
             self.edge_mlp = nn.Sequential(
-                nn.Linear(num_edge_features, num_edge_features * 2), # Example intermediate expansion
+                nn.Linear(num_edge_features, num_edge_features * 2),
                 nn.ReLU(),
-                nn.Linear(num_edge_features * 2, self.num_attn_heads) # Output `num_attn_heads` for direct bias to scores
+                nn.Dropout(mlp_dropout),
+                nn.Linear(num_edge_features * 2, num_attn_heads),
             )
             self.edge_layer_norm = nn.LayerNorm(num_edge_features)
-        else: 
+            self.layer_norm_edge_out = nn.LayerNorm(num_attn_heads)
+        else:
             self.edge_mlp = None
             self.edge_layer_norm = None
+            self.layer_norm_edge_out = None
 
-
-        # attention mechanism --------------------------------------------------
-        self.W_q = nn.Linear(out_features, out_features, bias=False) # Input is projected_x (out_features dim)
+        # attention projections ---------------------------------------------
+        self.W_q = nn.Linear(out_features, out_features, bias=False)
         self.W_k = nn.Linear(out_features, out_features, bias=False)
         self.W_v = nn.Linear(out_features, out_features, bias=False)
-        
+
         self.attn_dropout = nn.Dropout(dropout)
         self.leaky_relu = nn.LeakyReLU(0.2) if use_leaky_relu else nn.Identity()
 
-        # feedforward network --------------------------------------------------
+        # feed forward -------------------------------------------------------
         self.ffn = nn.Sequential(
             nn.Linear(out_features, 2 * out_features),
             nn.ReLU(),
@@ -146,56 +146,51 @@ class GraphAttentionLayer(nn.Module):
             nn.Linear(2 * out_features, out_features),
         )
         self.layer_norm_2 = nn.LayerNorm(out_features)
-        self.output_dropout = nn.Dropout(dropout) 
+        self.output_dropout = nn.Dropout(dropout)
         self.to(self.device)
 
-
-    def forward(self, x: torch.Tensor, adj: torch.Tensor, edge_attr: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        Args:
-            x (torch.Tensor): Node features [B, N, F_in].
-            adj (torch.Tensor): Adjacency matrix [B, N, N], 1 for edge, 0 otherwise.
-            edge_attr (torch.Tensor, optional): Edge features [B, N, N, F_edge]. Defaults to None.
-        """
+    def forward(self, x: Tensor, adj: Tensor, edge_attr: Optional[Tensor] = None) -> Tensor:
         B, N, _ = x.shape
 
-        x_norm = self.layer_norm_1(x)
-        x_proj = self.node_projection(x_norm)  # [B, N, out_features]
+        # 1. linear proj + LN ----------------------------------------------
+        x_proj = self.node_projection(self.layer_norm_1(x))
 
-        Q = self.W_q(x_proj).view(B, N, self.num_attn_heads, self.out_features_per_head)
-        K = self.W_k(x_proj).view(B, N, self.num_attn_heads, self.out_features_per_head)
-        V = self.W_v(x_proj).view(B, N, self.num_attn_heads, self.out_features_per_head)
+        # 2. build Q,K,V -----------------------------------------------------
+        Q = self.W_q(x_proj).view(B, N, self.num_attn_heads, self.out_features_per_head).transpose(1, 2)
+        K = self.W_k(x_proj).view(B, N, self.num_attn_heads, self.out_features_per_head).transpose(1, 2)
+        V = self.W_v(x_proj).view(B, N, self.num_attn_heads, self.out_features_per_head).transpose(1, 2)
 
-        Q = Q.transpose(1, 2)  # [B, num_heads, N, out_features_per_head]
-        K = K.transpose(1, 2)  # [B, num_heads, N, out_features_per_head]
-        V = V.transpose(1, 2)  # [B, num_heads, N, out_features_per_head]
+        # 3. scaled dot‑product --------------------------------------------
+        attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.out_features_per_head)
 
-        attn_scores_raw = torch.matmul(Q, K.transpose(-2, -1)) / (self.out_features_per_head**0.5) # [B, num_heads, N, N]
+        # 4. edge bias (clamped) -------------------------------------------
+        if self.edge_mlp is not None and edge_attr is not None:
+            edge_bias = self.edge_mlp(self.edge_layer_norm(edge_attr))  # [B,N,N,H]
+            edge_bias = edge_bias.permute(0, 3, 1, 2)                  # [B,H,N,N]
+            attn_scores = attn_scores + torch.tanh(edge_bias) * 5.0
 
-        if self.edge_mlp is not None and edge_attr is not None and self.num_edge_features > 0:
-            edge_attr_norm = self.edge_layer_norm(edge_attr)    # [B, N, N, F_edge]
-            edge_bias = self.edge_mlp(edge_attr_norm)           # [B, N, N, num_heads]
-            edge_bias = edge_bias.permute(0, 3, 1, 2)           # [B, num_heads, N, N]
-            attn_scores_raw = attn_scores_raw + edge_bias       # Add edge bias to attention scores
-        
-        attn_scores_raw = self.leaky_relu(attn_scores_raw) # Apply LeakyReLU after adding edge bias, before masking
+        attn_scores = self.leaky_relu(attn_scores)
 
-        mask = adj.unsqueeze(1)  # [B, 1, N, N]
-        attn_scores_masked = attn_scores_raw.masked_fill(mask == 0, float("-1e9")) # Use a large negative number
-        attn_probs = F.softmax(attn_scores_masked, dim=-1) # [B, num_heads, N, N]
-        attn_probs = self.attn_dropout(attn_probs)
+        # 5. mask + self‑loop -------------------------------------------------
+        eye  = torch.eye(N, device=adj.device).unsqueeze(0)           # [1,N,N]
+        mask = (adj + eye).clamp(max=1).unsqueeze(1)                  # [B,1,N,N]
 
-        context = torch.matmul(attn_probs, V) # [B, num_heads, N, out_features_per_head]
-        context_cat = context.transpose(1, 2).contiguous().view(B, N, self.num_attn_heads * self.out_features_per_head) # [B, N, out_features]
+        neg_inf = torch.finfo(attn_scores.dtype).min
+        attn_scores = attn_scores.masked_fill(mask == 0, neg_inf)
 
-        h_attn = x_proj + self.output_dropout(context_cat) # First residual: input to GAT + attention output
+        all_masked = (mask == 0).all(dim=-1, keepdim=True)            # [B,1,N,1]
+        attn_scores = attn_scores.masked_fill(all_masked, 0.0)
 
-        h_ffn_input = self.layer_norm_2(h_attn) 
-        h_ffn_output = self.ffn(h_ffn_input)
-        
-        out = h_attn + self.output_dropout(h_ffn_output) # Second residual: input to FFN + FFN output
-        
-        return out
+        # 6. safe soft‑max ---------------------------------------------------
+        attn_scores = attn_scores - attn_scores.amax(dim=-1, keepdim=True)
+        attn_probs  = torch.softmax(attn_scores, dim=-1)
+        attn_probs  = torch.nan_to_num(attn_probs, nan=0.0)
+        attn_probs  = self.attn_dropout(attn_probs)
+        ctx = torch.matmul(attn_probs, V).transpose(1, 2).contiguous().view(B, N, -1)
+
+        h_attn = x_proj + self.output_dropout(ctx)
+        h_ffn = self.ffn(self.layer_norm_2(h_attn))
+        return h_attn + self.output_dropout(h_ffn)
 
 
 class GPSLayer(nn.Module):
@@ -226,9 +221,9 @@ class GPSLayer(nn.Module):
             self.cross_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
 
         self.gamma = nn.Parameter(torch.tensor(0.5))
+        self.gamma_raw = nn.Parameter(torch.tensor(0.1))  # For raw feature skip connection
 
         self.norm = nn.LayerNorm(embed_dim)
-        # **NEW LayerNorm inside FFN**
         self.mlp = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.CELU(),
@@ -256,13 +251,13 @@ class GPSLayer(nn.Module):
         # 4. gated fusion & feed‑forward -----------------------------------
         res = self.residual_proj(residual)
         fused = res + x + self.gamma * g_out + self.gamma * c_out
-        fused = self.norm(fused)
+        fused = self.norm(fused + self.gamma_raw * res)
         out = self.mlp(fused)
         return out, e, a
 
 
 class GlobalAttentionPooling(nn.Module):
-    """Global attention pooling layer from the GAT-CD4C paper."""
+    """Global attention pooling layer from the GAT-CD4C paper with NaN- and half-precision-safe masking."""
 
     def __init__(self, in_features: int, hidden_dim: int, device: Union[str, torch.device] = "cpu"):
         super().__init__()
@@ -272,7 +267,6 @@ class GlobalAttentionPooling(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, 1),
         )
-        # self.feat_nn removed as per original GAT-CD4C (scores * x)
         self.to(self.device)
 
     def forward(self, x: torch.Tensor, node_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -281,14 +275,28 @@ class GlobalAttentionPooling(nn.Module):
             x (torch.Tensor): Node features [B, N, F_in].
             node_mask (torch.Tensor, optional): Mask for actual nodes [B, N], 1 for real, 0 for padding.
         """
-        attn_logits = self.gate_nn(x)  # [B, N, 1]
-        
-        if node_mask is not None:
-            attn_logits = attn_logits.masked_fill(node_mask.unsqueeze(-1) == 0, float("-1e9"))
+        # [B, N, 1]
+        attn_logits = self.gate_nn(x)
 
-        attn_scores = torch.softmax(attn_logits, dim=1) # Softmax over nodes to get attention scores
-        context = torch.sum(attn_scores * x, dim=1) # [B, F_in]
-        
+        if node_mask is not None:
+            # build mask [B, N, 1]
+            mask = node_mask.unsqueeze(-1) == 0
+            # smallest finite value for this dtype (safe in fp16/bf16)
+            neg_inf = torch.finfo(attn_logits.dtype).min
+            attn_logits = attn_logits.masked_fill(mask, neg_inf)
+
+            # if a sample has *all* nodes masked, reset logits to zero so softmax is uniform
+            all_masked = mask.all(dim=1, keepdim=True)  # [B, 1, 1]
+            attn_logits = attn_logits.masked_fill(all_masked, 0.0)
+
+        # subtract max for numerical stability, then softmax
+        attn_logits = attn_logits - attn_logits.amax(dim=1, keepdim=True)
+        attn_scores = torch.softmax(attn_logits, dim=1)
+        # guard against any remaining NaNs
+        attn_scores = torch.nan_to_num(attn_scores, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # weighted sum → [B, F_in]
+        context = torch.sum(attn_scores * x, dim=1)
         return context
 
 
@@ -352,7 +360,6 @@ class DualGraphAttentionNetwork(nn.Module):
         self,
         drug_in_features: int,    # Number of raw dense features for drug atoms (e.g., the 29 from DrugMolecule)
         prot_in_features: int,    # Number of raw dense features for protein residues (e.g. charge, coords = 4)
-        *,
         hidden_size: int = 64,    # Hidden size within GAT layers (intermediate, not directly GAT output unless emb_size=hidden_size)
         emb_size: int = 64,       # Output dimension of GAT layers & input to pooling if no cross-attn
         drug_edge_features: int = 17, 
