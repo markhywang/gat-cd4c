@@ -336,11 +336,17 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
                 dummy_p_x = torch.zeros((batch_un_d, args.max_nodes, p_x_dense.size(-1)), device=device)
                 dummy_p_e = torch.zeros((batch_un_d, args.max_nodes, args.max_nodes, p_e.size(-1)), device=device)
                 dummy_p_a = torch.zeros((batch_un_d, args.max_nodes, args.max_nodes), device=device)
+
+                # Disable cross-attention for dummy partner
+                orig_flag = model.use_cross
+                model.use_cross = False # no cross-attn!
                 _, drug_logits_un, _ = model(
                     u_d_z_masked, u_d_x, u_d_e, u_d_a,
                     dummy_p_z, dummy_p_x, dummy_p_e, dummy_p_a,
                     mlm_mask_drug=m_d_un, mlm_mask_prot=None
                 )
+                model.use_cross = orig_flag
+
                 mlm_loss_un_drug = 0.0
                 if drug_logits_un is not None:
                     mlm_loss_un_drug = F.cross_entropy(drug_logits_un, u_d_z[m_d_un], ignore_index=0)
@@ -354,11 +360,16 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
                 dummy_d_x = torch.zeros((batch_un_p, args.max_nodes, d_x.size(-1)), device=device)
                 dummy_d_e = torch.zeros((batch_un_p, args.max_nodes, args.max_nodes, d_e.size(-1)), device=device)
                 dummy_d_a = torch.zeros((batch_un_p, args.max_nodes, args.max_nodes), device=device)
+
+                # Disable cross-attention for dummy partner
+                model.use_cross = False # no cross-attn!
                 _, _, prot_logits_un = model(
                     dummy_d_z, dummy_d_x, dummy_d_e, dummy_d_a,
                     u_p_z_masked, u_p_x, u_p_e, u_p_a,
                     mlm_mask_drug=None, mlm_mask_prot=m_p_un
                 )
+                model.use_cross = orig_flag
+
                 mlm_loss_un_prot = 0.0
                 if prot_logits_un is not None:
                     mlm_loss_un_prot = F.cross_entropy(prot_logits_un, u_p_z[m_p_un], ignore_index=0)

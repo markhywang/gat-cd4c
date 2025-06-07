@@ -478,11 +478,30 @@ class DualGraphAttentionNetwork(nn.Module):
             d_cls = self.drug_pooling(hd, node_mask=(d_z != 0)).unsqueeze(1)  # [B,1,E]
             p_cls = self.prot_pooling(hp, node_mask=(p_z != 0)).unsqueeze(1)  # [B,1,E]
 
-            drug_padding_mask = (d_z == 0)
+            drug_padding_mask = (d_z == 0) # [B,N]
             prot_padding_mask = (p_z == 0)
 
-            d_cls_upd, _ = self.cross_cls_drug(d_cls, hp, hp, key_padding_mask=prot_padding_mask)
-            p_cls_upd, _ = self.cross_cls_prot(p_cls, hd, hd, key_padding_mask=drug_padding_mask)
+            # sample-wise flags: does this graph have ≥1 real node?
+            has_prot = (~prot_padding_mask).any(dim=1) # [B]
+            has_drug = (~drug_padding_mask).any(dim=1) # [B]
+
+            # init with the plain CLS vectors (no cross)
+            d_cls_upd = d_cls.clone()
+            p_cls_upd = p_cls.clone()
+
+            if has_prot.any():
+                d_cls_upd[has_prot], _ = self.cross_cls_drug(
+                    d_cls[has_prot], hp[has_prot], hp[has_prot],
+                    key_padding_mask=prot_padding_mask[has_prot])
+
+            if has_drug.any():
+                p_cls_upd[has_drug], _ = self.cross_cls_prot(
+                    p_cls[has_drug], hd[has_drug], hd[has_drug],
+                    key_padding_mask=drug_padding_mask[has_drug])
+
+            # final guard – just in case
+            d_cls_upd = torch.nan_to_num(d_cls_upd, nan=0.0)
+            p_cls_upd = torch.nan_to_num(p_cls_upd, nan=0.0)
 
             drug_vec = d_cls_upd.squeeze(1)
             prot_vec = p_cls_upd.squeeze(1)
