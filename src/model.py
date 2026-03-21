@@ -4,32 +4,207 @@ import math
 import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
+from torch_geometric.nn import MessagePassing
+from torch_geometric.utils import softmax as pyg_softmax, to_dense_batch
+
 
 # -----------------------------------------------------------------------------
-# GPSLayer: combine local GAT with global self-attention in one residual block
+# RBF distance encoder
+# -----------------------------------------------------------------------------
+class RBFEncoder(nn.Module):
+    """Gaussian radial-basis-function distance encoder.
+
+    Converts scalar distances (Å) into a num_rbf-dimensional feature vector
+    via learnable-free Gaussian basis functions.
+    """
+
+    def __init__(self, num_rbf: int = 16, d_min: float = 0.0, d_max: float = 12.0):
+        super().__init__()
+        centers = torch.linspace(d_min, d_max, num_rbf)
+        self.register_buffer('centers', centers)
+        self.gamma = (num_rbf / (d_max - d_min)) ** 2
+
+    def forward(self, d: torch.Tensor) -> torch.Tensor:
+        """d: [E] → [E, num_rbf]"""
+        return torch.exp(-self.gamma * (d.unsqueeze(-1) - self.centers) ** 2)
+
+
+# -----------------------------------------------------------------------------
+# Sparse protein local message passing (GATv2 + RBF edge features)
+# -----------------------------------------------------------------------------
+class SparseGATLayer(MessagePassing):
+    """GATv2-style message passing for sparse protein graphs.
+
+    Attention coefficient for edge (i,j):
+        a(i,j) = softmax_j(LeakyReLU([Wh_i || Wh_j || rbf(d_ij)] · a))
+
+    This injects 16-D RBF-encoded distances directly into the attention score,
+    making the local aggregation spatially aware without dense [N×N] tensors.
+    """
+
+    def __init__(self,
+                 in_features: int,
+                 out_features: int,
+                 num_rbf: int = 16,
+                 num_heads: int = 4,
+                 dropout: float = 0.2):
+        super().__init__(aggr='add', flow='source_to_target', node_dim=0)
+        assert out_features % num_heads == 0, "out_features must be divisible by num_heads"
+        self.num_heads = num_heads
+        self.head_dim = out_features // num_heads
+        self.out_features = out_features
+
+        self.rbf = RBFEncoder(num_rbf)
+        self.lin = nn.Linear(in_features, out_features, bias=False)
+        # Attention vector: one per head, over [h_i || h_j || rbf(d)]
+        self.attn = nn.Parameter(torch.empty(num_heads, 2 * self.head_dim + num_rbf))
+        self.attn_act = nn.LeakyReLU(0.2)
+        self.dropout = nn.Dropout(dropout)
+        self.out_proj = nn.Linear(out_features, out_features)
+        self.norm = nn.LayerNorm(out_features)
+        self.residual_proj = (nn.Linear(in_features, out_features, bias=False)
+                              if in_features != out_features else nn.Identity())
+
+        nn.init.xavier_uniform_(self.attn.data)
+
+    def forward(self,
+                x: torch.Tensor,
+                edge_index: torch.Tensor,
+                edge_attr: torch.Tensor) -> torch.Tensor:
+        """
+        x:          [N, in_features]
+        edge_index: [2, E]
+        edge_attr:  [E, 1]  raw distances (Å)
+        → [N, out_features]
+        """
+        residual = x
+        x_proj = self.lin(x)                                       # [N, out_features]
+        out = self.propagate(edge_index, x=x_proj, edge_attr=edge_attr)
+        out = self.out_proj(self.dropout(out))
+        return self.norm(out + self.residual_proj(residual))
+
+    def message(self,
+                x_i: torch.Tensor,
+                x_j: torch.Tensor,
+                edge_attr: torch.Tensor,
+                index: torch.Tensor) -> torch.Tensor:
+        rbf = self.rbf(edge_attr.squeeze(-1))                      # [E, num_rbf]
+        E = x_i.size(0)
+        xi_h = x_i.view(E, self.num_heads, self.head_dim)          # [E, H, D]
+        xj_h = x_j.view(E, self.num_heads, self.head_dim)          # [E, H, D]
+        rbf_h = rbf.unsqueeze(1).expand(-1, self.num_heads, -1)    # [E, H, rbf]
+
+        cat = torch.cat([xi_h, xj_h, rbf_h], dim=-1)              # [E, H, 2D+rbf]
+        attn_logits = (cat * self.attn).sum(-1)                    # [E, H]
+        attn_logits = self.attn_act(attn_logits)
+        # Normalize per target node across all its incoming edges
+        attn_w = pyg_softmax(attn_logits, index)                   # [E, H]
+        attn_w = self.dropout(attn_w)
+
+        msg = xj_h * attn_w.unsqueeze(-1)                         # [E, H, D]
+        return msg.view(E, -1)                                     # [E, out_features]
+
+
+# -----------------------------------------------------------------------------
+# Bipartite cross-attention: drug atoms → protein residues (or vice versa)
+# -----------------------------------------------------------------------------
+class BipartiteCrossAttention(MessagePassing):
+    """Sparse bipartite message passing for drug-protein cross-graph attention.
+
+    Source nodes send RBF-distance-weighted attention messages to target nodes
+    via an explicit sparse edge index (cross_ei).  No dense N×M matrix is built.
+
+    Convention: edge_index[0] = source global indices,
+                edge_index[1] = target global indices.
+    """
+
+    def __init__(self,
+                 in_features: int,
+                 out_features: int,
+                 num_rbf: int = 16,
+                 num_heads: int = 4,
+                 dropout: float = 0.2):
+        super().__init__(aggr='add', flow='source_to_target', node_dim=0)
+        assert out_features % num_heads == 0
+        self.num_heads = num_heads
+        self.head_dim = out_features // num_heads
+        self.out_features = out_features
+
+        self.rbf = RBFEncoder(num_rbf)
+        self.lin_src = nn.Linear(in_features, out_features, bias=False)
+        self.lin_tgt = nn.Linear(in_features, out_features, bias=False)
+        self.attn = nn.Parameter(torch.empty(num_heads, 2 * self.head_dim + num_rbf))
+        self.attn_act = nn.LeakyReLU(0.2)
+        self.dropout = nn.Dropout(dropout)
+        self.out_proj = nn.Linear(out_features, out_features)
+
+        nn.init.xavier_uniform_(self.attn.data)
+
+    def forward(self,
+                x_src: torch.Tensor,
+                x_tgt: torch.Tensor,
+                edge_index: torch.Tensor,
+                edge_attr: torch.Tensor,
+                num_tgt: int) -> torch.Tensor:
+        """
+        x_src:      [N_src, in_features]   source node embeddings
+        x_tgt:      [N_tgt, in_features]   target node embeddings (query in attention)
+        edge_index: [2, E]   row 0 = src idx, row 1 = tgt idx
+        edge_attr:  [E, 1]   distances (Å)
+        num_tgt:    total number of target nodes
+        → additive delta: [N_tgt, out_features]
+        """
+        if edge_index.size(1) == 0:
+            return torch.zeros(num_tgt, self.out_features,
+                               device=x_src.device, dtype=x_src.dtype)
+
+        src_proj = self.lin_src(x_src)    # [N_src, out_F]
+        tgt_proj = self.lin_tgt(x_tgt)    # [N_tgt, out_F]
+        out = self.propagate(edge_index,
+                             x=(src_proj, tgt_proj),
+                             edge_attr=edge_attr,
+                             size=(x_src.size(0), num_tgt))
+        return self.out_proj(self.dropout(out))
+
+    def message(self,
+                x_j: torch.Tensor,
+                x_i: torch.Tensor,
+                edge_attr: torch.Tensor,
+                index: torch.Tensor) -> torch.Tensor:
+        # x_j = source projected, x_i = target projected
+        rbf = self.rbf(edge_attr.squeeze(-1))                      # [E, num_rbf]
+        E = x_j.size(0)
+        xj_h = x_j.view(E, self.num_heads, self.head_dim)
+        xi_h = x_i.view(E, self.num_heads, self.head_dim)
+        rbf_h = rbf.unsqueeze(1).expand(-1, self.num_heads, -1)
+
+        cat = torch.cat([xi_h, xj_h, rbf_h], dim=-1)
+        attn_logits = (cat * self.attn).sum(-1)
+        attn_logits = self.attn_act(attn_logits)
+        attn_w = pyg_softmax(attn_logits, index)
+        attn_w = self.dropout(attn_w)
+
+        msg = xj_h * attn_w.unsqueeze(-1)
+        return msg.view(E, -1)
+
+
+# -----------------------------------------------------------------------------
+# GPS layer for dense drug graphs
 # -----------------------------------------------------------------------------
 class GPSLayer(nn.Module):
-    """Combine local GAT with global self-attention + optional cross-attention."""
+    """GPS layer for dense drug graphs: local dense GAT + global self-attention."""
+
     def __init__(self,
                  local_layer: nn.Module,
                  embed_dim: int,
                  num_heads: int,
-                 dropout: float,
-                 use_cross: bool = False):
+                 dropout: float):
         super().__init__()
         self.local = local_layer
         self.global_attn = nn.MultiheadAttention(embed_dim, num_heads,
                                                  dropout=dropout,
                                                  batch_first=True)
-        self.cross_attn  = nn.MultiheadAttention(embed_dim, num_heads,
-                                                 dropout=dropout,
-                                                 batch_first=True)
-        self.use_cross = use_cross
-        if use_cross:
-            # cross-attn: query self, key/value other
-            self.cross_attn = nn.MultiheadAttention(embed_dim, num_heads,
-                                                     dropout=dropout,
-                                                     batch_first=True)
+        self.norm = nn.LayerNorm(embed_dim)
         self.mlp = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.ReLU(),
@@ -38,36 +213,116 @@ class GPSLayer(nn.Module):
         )
 
     def forward(self,
-                x_e_a: tuple[Tensor,Tensor,Tensor],
-                context: Tensor | None = None
-               ) -> tuple[Tensor,Tensor,Tensor]:
+                x_e_a: tuple[Tensor, Tensor, Tensor]
+                ) -> tuple[Tensor, Tensor, Tensor]:
         x, edge, adj = x_e_a
-        residual = x
-
-        # --- local GAT ---
         local_x, edge, adj = self.local((x, edge, adj))
-
-        # --- global self‑attn ---
         global_out, _ = self.global_attn(local_x, local_x, local_x)
-
-        # --- optional cross‑attn from `context` (other graph) ---
-        if context is not None and self.use_cross and context.size(-1) == local_x.size(-1):
-            cross_out, _ = self.cross_attn(local_x, context, context)
-        else:
-            cross_out = 0
-
-        # --- fuse and MLP ---
-        res = (self.local.residual_proj(residual)
-               if hasattr(self.local, 'residual_proj') else local_x)
-        fused = res + local_x + global_out + cross_out
+        fused = self.norm(local_x + global_out)
         out = self.mlp(fused)
         return out, edge, adj
 
 
+# -----------------------------------------------------------------------------
+# GPS layer for sparse protein graphs
+# -----------------------------------------------------------------------------
+class SparseProteinGPSLayer(nn.Module):
+    """GPS layer for sparse protein graphs.
+
+    Three sub-steps per forward pass:
+      1. Local:  SparseGATLayer — RBF-aware GATv2 message passing on protein graph.
+      2. Global: nn.MultiheadAttention — global self-attention.
+                 Uses to_dense_batch to unpack the sparse tensor into a padded
+                 sequence [B, N_max, F] so that nn.MultiheadAttention can be used
+                 directly; p_batch drives the key-padding mask.
+      3. Cross:  BipartiteCrossAttention — drug atoms → protein residues via
+                 the 5 Å sparse cross-edge index (cross_ei, cross_ea).
+    """
+
+    def __init__(self,
+                 in_features: int,
+                 out_features: int,
+                 num_rbf: int = 16,
+                 num_heads: int = 4,
+                 dropout: float = 0.2):
+        super().__init__()
+        self.out_features = out_features
+
+        # Step 1: local sparse GAT
+        self.local = SparseGATLayer(in_features, out_features, num_rbf, num_heads, dropout)
+
+        # Step 2: global self-attention (operates on densified batch)
+        self.global_attn = nn.MultiheadAttention(out_features, num_heads,
+                                                 dropout=dropout,
+                                                 batch_first=True)
+        self.norm_global = nn.LayerNorm(out_features)
+
+        # Step 3: drug → protein cross-attention
+        self.cross_attn = BipartiteCrossAttention(out_features, out_features,
+                                                  num_rbf, num_heads, dropout)
+        self.norm_cross = nn.LayerNorm(out_features)
+
+        self.mlp = nn.Sequential(
+            nn.Linear(out_features, out_features),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(out_features, out_features),
+        )
+        self.norm_mlp = nn.LayerNorm(out_features)
+
+    def forward(self,
+                x: torch.Tensor,
+                edge_index: torch.Tensor,
+                edge_attr: torch.Tensor,
+                p_batch: torch.Tensor,
+                drug_flat: torch.Tensor,
+                cross_ei: torch.Tensor,
+                cross_ea: torch.Tensor) -> torch.Tensor:
+        """
+        x:          [N_total, in_features]   sparse concatenated protein nodes
+        edge_index: [2, E_prot]              protein COO edge index
+        edge_attr:  [E_prot, 1]              protein edge distances
+        p_batch:    [N_total]                batch assignment vector (0 … B-1)
+        drug_flat:  [B*H, out_features]      drug nodes flattened for cross-attention
+        cross_ei:   [2, E_cross]             row 0 = drug global idx, row 1 = prot global idx
+        cross_ea:   [E_cross, 1]             drug-protein distances (Å)
+        → [N_total, out_features]
+        """
+        # 1. Local sparse message passing
+        x = self.local(x, edge_index, edge_attr)               # [N_total, out_F]
+
+        # 2. Global self-attention via to_dense_batch
+        # to_dense_batch packs sparse nodes into [B, N_max, F] with a boolean mask
+        # where True = real node.  MHA expects key_padding_mask where True = ignore,
+        # so we invert the mask.
+        x_dense, mask = to_dense_batch(x, p_batch)            # [B, N_max, F], mask True=real
+        key_pad = ~mask                                        # True = padding (MHA convention)
+        global_out, _ = self.global_attn(x_dense, x_dense, x_dense,
+                                         key_padding_mask=key_pad)
+        # Unpack: recover only the real-node rows using the same mask
+        x = self.norm_global(x + global_out[mask])            # [N_total, out_F]
+
+        # 3. Drug → protein cross-attention
+        prot_delta = self.cross_attn(
+            x_src=drug_flat,
+            x_tgt=x,
+            edge_index=cross_ei,
+            edge_attr=cross_ea,
+            num_tgt=x.size(0),
+        )                                                      # [N_total, out_F]
+        x = self.norm_cross(x + prot_delta)
+
+        # 4. MLP with residual
+        x = self.norm_mlp(x + self.mlp(x))
+        return x
+
+
+# -----------------------------------------------------------------------------
+# Drug graph encoder (dense, unchanged interface)
+# -----------------------------------------------------------------------------
 class GraphAttentionEncoder(nn.Module):
-    """
-    Encode a graph (drug or protein) with stacked GAT layers and global attention pooling.
-    """
+    """Encode a drug graph (dense) with stacked GPS layers and global attention pooling."""
+
     def __init__(self,
                  in_features: int,
                  hidden_size: int,
@@ -79,52 +334,79 @@ class GraphAttentionEncoder(nn.Module):
                  pooling_dim: int,
                  device: torch.device):
         super().__init__()
-        # Build GAT stack
         layers = []
         for i in range(num_layers):
-            in_f = in_features if i == 0 else hidden_size
+            in_f  = in_features if i == 0 else hidden_size
             out_f = out_features if i == num_layers - 1 else hidden_size
             heads = 1 if i == num_layers - 1 else num_attn_heads
-            # wrap the standard GAT layer into a GPS layer
-            local = GraphAttentionLayer(device,
-                                        in_f,
-                                        out_f,
-                                        num_edge_features,
-                                        heads,
-                                        dropout,
+            local = GraphAttentionLayer(device, in_f, out_f, num_edge_features,
+                                        heads, dropout,
                                         use_leaky_relu=(i != num_layers - 1))
-            layers.append(GPSLayer(local,
-                                   embed_dim=out_f,
-                                   num_heads=heads,
-                                   dropout=dropout,
-                                   use_cross=False))
+            layers.append(GPSLayer(local, embed_dim=out_f, num_heads=heads, dropout=dropout))
         self.gat_layers = nn.ModuleList(layers)
-        # Global attention pooling
-        self.global_pool = GlobalAttentionPooling(
-            in_features=out_features,
-            out_features=out_features,
-            hidden_dim=pooling_dim,
-            dropout=dropout
-        )
+        self.global_pool = GlobalAttentionPooling(out_features, out_features, pooling_dim, dropout)
 
     def forward(self,
                 node_feats: torch.Tensor,
                 edge_feats: torch.Tensor,
-                adj: torch.Tensor,
-                context: torch.Tensor | None = None  # <— optional cross‑graph context
-                ) -> torch.Tensor:
+                adj: torch.Tensor) -> torch.Tensor:
         x, e, a = node_feats, edge_feats, adj
         for layer in self.gat_layers:
-            # pass the other graph’s node‑embeddings in as `context`
-            x, e, a = layer((x, e, a), context=context)
-        # now pool down to a single graph embedding
+            x, e, a = layer((x, e, a))
         return self.global_pool(x)
 
 
+# -----------------------------------------------------------------------------
+# Sparse global attention pooling (for protein)
+# -----------------------------------------------------------------------------
+class SparseGlobalAttentionPooling(nn.Module):
+    """Global attention pooling for sparse protein graphs.
+
+    Converts sparse [N_total, F] + batch vector to per-graph embeddings [B, out_features].
+    Uses to_dense_batch internally so padding is handled correctly.
+    """
+
+    def __init__(self,
+                 in_features: int,
+                 out_features: int,
+                 hidden_dim: int = 128,
+                 dropout: float = 0.2):
+        super().__init__()
+        self.attn = nn.Linear(in_features, 1)
+        self.dropout = nn.Dropout(dropout)
+        self.proj = nn.Sequential(
+            nn.Linear(in_features, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, out_features),
+        )
+
+    def forward(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """x: [N_total, F], batch: [N_total] → [B, out_features]"""
+        x_dense, mask = to_dense_batch(x, batch)              # [B, N_max, F], True=real
+        logits = self.attn(x_dense)                           # [B, N_max, 1]
+        logits = logits.masked_fill(~mask.unsqueeze(-1), float('-inf'))
+        scores = F.softmax(logits, dim=1)                     # [B, N_max, 1]
+        scores = self.dropout(scores)
+        pooled = (scores.transpose(1, 2) @ x_dense).squeeze(1)  # [B, F]
+        pooled = self.dropout(pooled)
+        return self.proj(pooled)                              # [B, out_features]
+
+
+# -----------------------------------------------------------------------------
+# Dual-encoder model (updated for sparse protein + sparse cross-graph edges)
+# -----------------------------------------------------------------------------
 class DualGraphAttentionNetwork(nn.Module):
+    """Drug-target interaction predictor (pChEMBL regression).
+
+    Drug graph:    dense [B, H, F]         processed by GPS layers
+                   (GraphAttentionLayer + nn.MultiheadAttention).
+    Protein graph: sparse COO [N_total, F] processed by SparseProteinGPSLayer
+                   (SparseGATLayer + to_dense_batch MHA + BipartiteCrossAttention).
+    Cross-edges:   5 Å sparse drug→protein edges built in collate_drug_prot.
     """
-    Combines a drug‐graph encoder and protein‐graph encoder, then an MLP for final pChEMBL prediction.
-    """
+
     def __init__(self,
                  drug_in_features: int,
                  prot_in_features: int,
@@ -140,16 +422,29 @@ class DualGraphAttentionNetwork(nn.Module):
                  mlp_hidden: int = 128,
                  device: torch.device = torch.device("cpu")):
         super().__init__()
-        # Drug and protein encoders
+
+        # Drug encoder: dense GPS layers
         self.drug_encoder = GraphAttentionEncoder(
             drug_in_features, hidden_size, emb_size, drug_edge_features,
             num_layers, num_heads, dropout, pooling_dim, device
         )
-        self.prot_encoder = GraphAttentionEncoder(
-            prot_in_features, hidden_size, emb_size, prot_edge_features,
-            num_layers, num_heads, dropout, pooling_dim, device
-        )
-        # Final MLP
+
+        # Protein encoder: sparse GPS layers with cross-attention
+        prot_layers = []
+        for i in range(num_layers):
+            in_f  = prot_in_features if i == 0 else hidden_size
+            out_f = emb_size         if i == num_layers - 1 else hidden_size
+            heads = 1                if i == num_layers - 1 else num_heads
+            prot_layers.append(SparseProteinGPSLayer(
+                in_features=in_f,
+                out_features=out_f,
+                num_heads=heads,
+                dropout=dropout,
+            ))
+        self.prot_gps_layers = nn.ModuleList(prot_layers)
+        self.prot_pool = SparseGlobalAttentionPooling(emb_size, emb_size, pooling_dim, dropout)
+
+        # Final regression MLP
         self.mlp = nn.Sequential(
             nn.Linear(emb_size * 2, mlp_hidden),
             nn.CELU(),
@@ -161,31 +456,42 @@ class DualGraphAttentionNetwork(nn.Module):
         )
 
     def forward(self,
-                drug_node_feats: torch.Tensor,
-                drug_edge_feats: torch.Tensor,
-                drug_adj: torch.Tensor,
-                prot_node_feats: torch.Tensor,
-                prot_edge_feats: torch.Tensor,
-                prot_adj: torch.Tensor) -> torch.Tensor:
-        # Encode each graph
-        # initialize per‑graph hidden states
+                drug_node_feats: torch.Tensor,   # [B, H, F_drug]
+                drug_edge_feats: torch.Tensor,   # [B, H, H, F_e_drug]
+                drug_adj: torch.Tensor,          # [B, H, H]
+                prot_ns: torch.Tensor,           # [N_total, F_prot]  sparse
+                prot_ei: torch.Tensor,           # [2, E_prot]        COO
+                prot_ea: torch.Tensor,           # [E_prot, 1]
+                prot_batch: torch.Tensor,        # [N_total]
+                cross_ei: torch.Tensor,          # [2, E_cross]
+                cross_ea: torch.Tensor           # [E_cross, 1]
+                ) -> torch.Tensor:
         d_x, d_e, d_a = drug_node_feats, drug_edge_feats, drug_adj
-        p_x, p_e, p_a = prot_node_feats, prot_edge_feats, prot_adj
+        p_x = prot_ns
+        B = d_x.size(0)
+        H = d_x.size(1)
 
-        # step through each GPS layer in lock‑step, passing
-        # drug’s emb as context to protein and vice versa
         for d_layer, p_layer in zip(self.drug_encoder.gat_layers,
-                                    self.prot_encoder.gat_layers):
-            d_x, d_e, d_a = d_layer((d_x, d_e, d_a), context=p_x)
-            p_x, p_e, p_a = p_layer((p_x, p_e, p_a), context=d_x)
+                                    self.prot_gps_layers):
+            # Drug: dense local GAT + global self-attention
+            d_x, d_e, d_a = d_layer((d_x, d_e, d_a))
 
-        # final pooled embeddings
-        drug_emb = self.drug_encoder.global_pool(d_x)
-        prot_emb = self.prot_encoder.global_pool(p_x)
-        # Concatenate and project
-        x = torch.cat([drug_emb, prot_emb], dim=-1)   # [B, 2]
-        return self.mlp(x).squeeze(-1)                # [B]
+            # Protein: sparse local GAT + global self-attn + drug→protein cross-attn
+            # drug_flat provides the source embeddings for BipartiteCrossAttention.
+            # cross_ei[0] indexes into drug_flat; cross_ei[1] indexes into p_x.
+            drug_flat = d_x.reshape(B * H, -1)               # [B*H, F_drug_out]
+            p_x = p_layer(p_x, prot_ei, prot_ea, prot_batch,
+                          drug_flat, cross_ei, cross_ea)
 
+        drug_emb = self.drug_encoder.global_pool(d_x)        # [B, emb_size]
+        prot_emb = self.prot_pool(p_x, prot_batch)           # [B, emb_size]
+
+        return self.mlp(torch.cat([drug_emb, prot_emb], dim=-1))  # [B, 1]
+
+
+# =============================================================================
+# Legacy classes — kept for benchmark.py and GraphAttentionNetwork compatibility
+# =============================================================================
 
 class GraphAttentionNetwork(nn.Module):
     """Graph Attention Network for learning node representations and predicting pCHEMBL scores.
@@ -467,9 +773,6 @@ class GraphAttentionLayer(nn.Module):
 
 
 if __name__ == '__main__':
-    # import doctest
-    # doctest.testmod()
-
     import python_ta
     python_ta.check_all(config={
         'extra-imports': [
@@ -485,12 +788,11 @@ if __name__ == '__main__':
             'math',
             'torch',
             'torch.nn',
-            'torch.nn.functional'
+            'torch.nn.functional',
+            'torch_geometric.nn',
+            'torch_geometric.utils',
         ],
         'disable': ['R0914', 'E1101', 'R0913', 'R0902', 'E9959'],
-        # R0914 for local variable, E1101 for attributes for imported modules
-        # R0913 for arguments, R0902 for instance attributes in class
-        # E9959 for instance annotation
         'allowed-io': ['main'],
         'max-line-length': 120,
     })

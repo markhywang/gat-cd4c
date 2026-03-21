@@ -19,4 +19,8 @@ args_dict = {
     "dropout": 0.2,
     "pooling_dropout": 0.1,
     "pooling_dim": 96,
+    "emb_size": 128,
+    "mlp_hidden": 192,
+    "max_nodes": 80,
+    "protein_graph_dir": "data/protein_graphs",
 }

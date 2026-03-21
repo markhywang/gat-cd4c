@@ -171,6 +171,69 @@ class ProteinGraphBuilder:
         return Data(x=node_x, pos=coords, edge_index=edge_index, edge_attr=edge_attr)
 
     # ------------------------------------------------------------------
+    # Cross-graph edge construction
+    # ------------------------------------------------------------------
+    @staticmethod
+    def build_cross_edges(
+        drug_pos: torch.Tensor,
+        prot_pos: torch.Tensor,
+        drug_offset: int,
+        prot_offset: int,
+        n_real_drug: int,
+        cutoff: float = 5.0,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Build sparse cross-graph edges for drug-protein atom pairs within *cutoff* Å.
+
+        Only (drug atom, protein residue) pairs whose 3-D Euclidean distance is strictly
+        less than *cutoff* receive an edge.  This keeps the cross-attention matrix sparse
+        and focused on the biologically relevant contact zone.
+
+        Args:
+            drug_pos:    [H, 3] padded drug-atom positions (zero rows = padding).
+            prot_pos:    [N_prot, 3] protein Cα positions.
+            drug_offset: Global drug-node base index = batch_idx * H.
+            prot_offset: Cumulative protein-node offset in the batched sparse tensor.
+            n_real_drug: Number of non-padded drug atoms (first n_real_drug rows of drug_pos).
+            cutoff:      Distance threshold in Ångströms (default 5.0 Å).
+
+        Returns:
+            edge_index: int64 [2, E_cross] — row 0 global drug indices, row 1 global prot indices.
+            edge_attr:  float32 [E_cross, 1] — raw Euclidean distance per cross-edge.
+
+        Note:
+            Drug positions are currently RDKit ETKDGv3 conformers in a local coordinate
+            frame.  Replace ``drug_pos`` with Boltz-2 complex coordinates so that
+            distances are physically meaningful relative to the protein structure.
+        """
+        if n_real_drug == 0 or prot_pos.size(0) == 0:
+            return (
+                torch.zeros((2, 0), dtype=torch.long),
+                torch.zeros((0, 1), dtype=torch.float32),
+            )
+
+        real_drug_pos = drug_pos[:n_real_drug]                 # [n_real, 3]
+
+        # cdist: [1, n_real, 3] × [1, N_prot, 3] → [n_real, N_prot]
+        dist = torch.cdist(
+            real_drug_pos.unsqueeze(0),
+            prot_pos.unsqueeze(0),
+        ).squeeze(0)
+
+        drug_local, prot_local = (dist < cutoff).nonzero(as_tuple=True)
+        if drug_local.numel() == 0:
+            return (
+                torch.zeros((2, 0), dtype=torch.long),
+                torch.zeros((0, 1), dtype=torch.float32),
+            )
+
+        distances  = dist[drug_local, prot_local]              # [E_cross]
+        edge_index = torch.stack(
+            [drug_local + drug_offset, prot_local + prot_offset], dim=0
+        ).long()                                               # [2, E_cross]
+        edge_attr  = distances.unsqueeze(-1)                   # [E_cross, 1]
+        return edge_index, edge_attr
+
+    # ------------------------------------------------------------------
     # Caching helpers (optional)
     # ------------------------------------------------------------------
     def load(self, chembl_id: str) -> Data:

@@ -28,23 +28,34 @@ class DrugMolecule:
     """
     def __init__(self, smiles_str: str, max_nodes: int = 50, include_3d: bool = False):
         self.include_3d = include_3d
-        # build raw molecule and compute 3D if requested
         mol = Chem.MolFromSmiles(smiles_str)
         if mol is None:
             raise ValueError(f"Invalid SMILES: {smiles_str}")
-        mol = Chem.AddHs(mol)
-        if include_3d:
-            AllChem.EmbedMolecule(mol, useRandomCoords=True, maxAttempts=50)
+
+        # Always embed a 3-D conformer so that pos_tensor is available for
+        # cross-graph edge construction in collate_drug_prot.  H atoms are
+        # added for geometry quality, then stripped; the resulting heavy-atom
+        # mol is used for both the coordinate array and the graph.
+        # NOTE: these are RDKit ETKDGv3 coords in a local frame.  Replace
+        # atom_coords with Boltz-2 complex coordinates (same frame as the
+        # protein PDB) once Boltz-2 integration is complete.
+        mol_h = Chem.AddHs(mol)
+        params = AllChem.ETKDGv3()
+        params.randomSeed = 42
+        embed_ok = AllChem.EmbedMolecule(mol_h, params) != -1
+        mol = Chem.RemoveHs(mol_h)          # heavy-atom mol, conformer intact when embed_ok
+        if embed_ok and mol.GetNumConformers() > 0:
             conf = mol.GetConformer()
-            # store 3D coords for each atom
             self.atom_coords = [list(conf.GetAtomPosition(i)) for i in range(mol.GetNumAtoms())]
-        mol = Chem.RemoveHs(mol)
-        # extract graph
+        else:
+            self.atom_coords = [[0.0, 0.0, 0.0]] * mol.GetNumAtoms()
+
         self.mol, self.node_feats, self.edge_feats, self.adjacency_list, self.neighbours = \
             self._construct_molecular_graph(mol)
         self.num_nodes = len(self.node_feats)
         self.max_nodes = max_nodes
-        self.node_tensor, self.edge_tensor, self.adjacency_tensor = self._tensor_preprocess()
+        self.node_tensor, self.edge_tensor, self.adjacency_tensor, self.pos_tensor = \
+            self._tensor_preprocess()
 
     def _construct_molecular_graph(self, mol: Chem.Mol):
         node_feats, adjacency_list, edge_feats, neighbours = [], [], {}, []
@@ -94,7 +105,14 @@ class DrugMolecule:
             if i < self.max_nodes and j < self.max_nodes:
                 e[i, j] = torch.tensor(self._process_edge_features(bf), dtype=torch.float32)
                 a[i, j] = 1
-        return x, e, a
+
+        # pos_tensor: heavy-atom 3-D coordinates padded/cropped to max_nodes.
+        # Kept separate from node features so that include_3d=False does not
+        # change the node feature dimension seen by the model.
+        pad_coords = (self.atom_coords + [[0.0, 0.0, 0.0]] * self.max_nodes)[:self.max_nodes]
+        pos = torch.tensor(pad_coords, dtype=torch.float32)   # [max_nodes, 3]
+
+        return x, e, a, pos
 
     def _pad(self, t: torch.Tensor, shape: tuple):
         pad = []
@@ -130,7 +148,7 @@ class DrugMolecule:
         return out
 
     def to_tensors(self):
-        return self.node_tensor, self.edge_tensor, self.adjacency_tensor
+        return self.node_tensor, self.edge_tensor, self.adjacency_tensor, self.pos_tensor
 
 
 class DrugProteinDataset(Dataset):
@@ -158,13 +176,16 @@ class DrugProteinDataset(Dataset):
         return self.builder.load(pid)
 
     def __getitem__(self, i):
-        d_n, d_e, d_a = self.load_drug(self.smiles[i])
+        d_n, d_e, d_a, d_pos = self.load_drug(self.smiles[i])
         pg = self.load_protein(self.prot_ids[i])
-        p_n = pg.x.cpu().half() if self.use_half else pg.x.cpu()
-        p_e = pg.edge_attr.cpu().half() if self.use_half else pg.edge_attr.cpu()
-        p_i = pg.edge_index.cpu()
-        lbl = torch.tensor(self.pchembl[i], dtype=torch.float32)
-        return d_n, d_e, d_a, p_n, p_e, p_i, lbl
+        p_n   = pg.x.cpu().half()        if self.use_half else pg.x.cpu()
+        p_e   = pg.edge_attr.cpu().half() if self.use_half else pg.edge_attr.cpu()
+        p_i   = pg.edge_index.cpu()
+        # Protein Cα positions from PDB / Boltz-2; used for cross-graph edge construction.
+        p_pos = pg.pos.cpu() if (hasattr(pg, 'pos') and pg.pos is not None) \
+                else torch.zeros((pg.x.size(0), 3), dtype=torch.float32)
+        lbl   = torch.tensor(self.pchembl[i], dtype=torch.float32)
+        return d_n, d_e, d_a, d_pos, p_n, p_e, p_i, p_pos, lbl
 
 
 if __name__ == '__main__':

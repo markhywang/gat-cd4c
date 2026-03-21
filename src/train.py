@@ -31,54 +31,116 @@ def pad_to(x: torch.Tensor, shape: tuple):
 
 def collate_drug_prot(
         batch,
-        prot_graph_dir,
-        hard_limit=64,
-        drug_edge_feats=17,
-        prot_edge_feats=1):
-    
+        hard_limit: int = 80,
+        drug_edge_feats: int = 17,
+        cross_cutoff: float = 5.0):
+    """Collate a list of DrugProteinDataset items into a batch.
+
+    Drug graphs remain **dense** (padded/cropped to hard_limit × hard_limit).
+    Protein graphs remain **sparse** (PyG COO format, concatenated across the batch).
+    Cross-graph edges connect drug atoms to protein residues within *cross_cutoff* Å,
+    yielding a sparse [2, E_cross] index for biologically focused cross-attention.
+
+    Batch item format (from DrugProteinDataset.__getitem__):
+        d_n   [max_nodes, F_n_drug]  — drug node features (pre-padded)
+        d_e   [max_nodes, max_nodes, F_e_drug]  — drug edge features
+        d_a   [max_nodes, max_nodes]  — drug adjacency
+        d_pos [max_nodes, 3]          — drug atom 3-D positions (RDKit ETKDGv3 placeholder)
+        p_n   [N_prot, F_n_prot]      — protein node features (sparse, no padding)
+        p_e   [E_prot, F_e_prot]      — protein edge attributes (COO)
+        p_i   [2, E_prot]             — protein edge index (COO)
+        p_pos [N_prot, 3]             — protein Cα positions
+        label scalar
+
+    Returns (10-tuple):
+        drug_ns   [B, H, F_n_drug]
+        drug_es   [B, H, H, F_e_drug]
+        drug_as   [B, H, H]
+        prot_ns   [N_total, F_n_prot]   sparse — concatenated protein nodes
+        prot_eis  [2, E_prot_total]     sparse — offset-corrected edge index
+        prot_eas  [E_prot_total, F_e]   sparse — protein edge attributes
+        prot_batch[N_total]             batch assignment vector (0 … B-1)
+        cross_ei  [2, E_cross]          sparse — drug global idx → prot global idx
+        cross_ea  [E_cross, 1]          Euclidean distance per cross-edge (Å)
+        labels    [B]
+    """
+    H = hard_limit
     drug_ns, drug_es, drug_as = [], [], []
-    prot_ns, prot_es, prot_as = [], [], []
+    prot_ns_list, prot_ei_list, prot_ea_list, prot_batch_parts = [], [], [], []
+    cross_ei_list, cross_ea_list = [], []
     labels = []
-    
-    for d_n, d_e, d_a, p_n, p_e, p_i, label in batch:
-        # — drug (same as before) —
-        H = hard_limit
-        drug_ns.append(pad_to(d_n, (H, d_n.size(-1))))
-        drug_es.append(pad_to(d_e, (H, H, drug_edge_feats)))
-        drug_as.append(pad_to(d_a, (H, H)))
-        
-        # — protein: truncate node‐features, then build DENSE adjacency & edge‐feature tensors —
+
+    prot_node_offset = 0  # cumulative protein node count for COO index offsetting
+
+    for b_idx, (d_n, d_e, d_a, d_pos, p_n, p_e, p_i, p_pos, label) in enumerate(batch):
+
+        # ── Drug: dense, pad/crop to H ─────────────────────────────────────
+        drug_ns.append(pad_to(d_n,   (H, d_n.size(-1))))
+        drug_es.append(pad_to(d_e,   (H, H, drug_edge_feats)))
+        drug_as.append(pad_to(d_a,   (H, H)))
+        drug_pos_b = pad_to(d_pos,   (H, 3))              # [H, 3]
+
+        # ── Protein: sparse, truncate to H if necessary ────────────────────
         N = p_n.size(0)
         if N > H:
-            mask = (p_i[0] < H) & (p_i[1] < H)
-            p_i = p_i[:, mask]
-            p_e = p_e[mask]
-            p_n = p_n[:H]
-            N = H
-        
-        # pad node feats
-        prot_ns.append(pad_to(p_n, (H, p_n.size(1))))
-        
-        # build dense adj+edge_attr
-        adj = torch.zeros((H, H), dtype=torch.float32)
-        edge_t = torch.zeros((H, H, prot_edge_feats), dtype=torch.float32)
-        for j in range(p_i.size(1)):
-            i0, i1 = int(p_i[0,j]), int(p_i[1,j])
-            adj[i0, i1] = 1
-            edge_t[i0, i1] = p_e[j]
-        prot_as.append(adj)
-        prot_es.append(edge_t)
-        
+            keep = (p_i[0] < H) & (p_i[1] < H)
+            p_i   = p_i[:, keep]
+            p_e   = p_e[keep]
+            p_pos = p_pos[:H]
+            p_n   = p_n[:H]
+            N     = H
+
+        prot_ns_list.append(p_n)
+        prot_ei_list.append(p_i + prot_node_offset)       # offset into global node space
+        prot_ea_list.append(p_e)
+        prot_batch_parts.append(
+            torch.full((N,), b_idx, dtype=torch.long)
+        )
+
+        # ── Cross-graph edges within cross_cutoff Å ────────────────────────
+        # n_real_drug: non-padded rows have at least one non-zero feature
+        n_real_drug = int((d_n.abs().sum(dim=-1) > 0).sum().item())
+        n_real_drug = min(n_real_drug, H)
+
+        c_ei, c_ea = ProteinGraphBuilder.build_cross_edges(
+            drug_pos    = drug_pos_b,
+            prot_pos    = p_pos,
+            drug_offset = b_idx * H,
+            prot_offset = prot_node_offset,
+            n_real_drug = n_real_drug,
+            cutoff      = cross_cutoff,
+        )
+        if c_ei.size(1) > 0:
+            cross_ei_list.append(c_ei)
+            cross_ea_list.append(c_ea)
+
+        prot_node_offset += N
         labels.append(label)
-    
+
+    # ── Assemble sparse protein tensors ────────────────────────────────────
+    prot_ns   = torch.cat(prot_ns_list, dim=0)            # [N_total, F_n_prot]
+    prot_eis  = torch.cat(prot_ei_list, dim=1)            # [2, E_prot_total]
+    prot_eas  = torch.cat(prot_ea_list, dim=0)            # [E_prot_total, F_e]
+    prot_batch= torch.cat(prot_batch_parts, dim=0)        # [N_total]
+
+    if cross_ei_list:
+        cross_ei = torch.cat(cross_ei_list, dim=1)        # [2, E_cross]
+        cross_ea = torch.cat(cross_ea_list, dim=0)        # [E_cross, 1]
+    else:
+        cross_ei = torch.zeros((2, 0), dtype=torch.long)
+        cross_ea = torch.zeros((0, 1), dtype=torch.float32)
+
     return (
-        torch.stack(drug_ns),      # [B, H, Fₙ_drug]
-        torch.stack(drug_es),      # [B, H, H, Fₑ_drug]
-        torch.stack(drug_as),      # [B, H, H]
-        torch.stack(prot_ns),      # [B, H, Fₙ_prot]
-        torch.stack(prot_es),      # [B, H, H, Fₑ_prot]
-        torch.stack(prot_as),      # [B, H, H]
-        torch.tensor(labels, dtype=torch.float32)  # [B]
+        torch.stack(drug_ns),                             # [B, H, F_n_drug]
+        torch.stack(drug_es),                             # [B, H, H, F_e_drug]
+        torch.stack(drug_as),                             # [B, H, H]
+        prot_ns,                                          # [N_total, F_n_prot]
+        prot_eis,                                         # [2, E_prot_total]
+        prot_eas,                                         # [E_prot_total, F_e]
+        prot_batch,                                       # [N_total]
+        cross_ei,                                         # [2, E_cross]
+        cross_ea,                                         # [E_cross, 1]
+        torch.tensor(labels, dtype=torch.float32),        # [B]
     )
 
 
@@ -124,31 +186,14 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         multiprocessing_context=ctx,
     )
 
-    train_loader = DataLoader(
-        train_ds,
-        shuffle=True,
-        collate_fn=partial(
-            collate_drug_prot,
-            prot_graph_dir=args.protein_graph_dir,
-            hard_limit=args.max_nodes,
-            drug_edge_feats=17,
-            prot_edge_feats=1
-        ),
-        **loader_kwargs
+    collate_fn = partial(
+        collate_drug_prot,
+        hard_limit=args.max_nodes,
+        drug_edge_feats=17,
+        cross_cutoff=5.0,
     )
-
-    val_loader = DataLoader(
-        val_ds,
-        shuffle=False,
-        collate_fn=partial(
-            collate_drug_prot,
-            prot_graph_dir=args.protein_graph_dir,
-            hard_limit=args.max_nodes,
-            drug_edge_feats=17,
-            prot_edge_feats=1
-        ),
-        **loader_kwargs
-    )
+    train_loader = DataLoader(train_ds, shuffle=True,  collate_fn=collate_fn, **loader_kwargs)
+    val_loader   = DataLoader(val_ds,   shuffle=False, collate_fn=collate_fn, **loader_kwargs)
 
     loss_func = nn.SmoothL1Loss(beta=args.huber_beta)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -175,11 +220,18 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         samples = 0
     
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.max_epochs}"):
-            d_n, d_e, d_a, p_n, p_e, p_a, labels = [x.to(device) for x in batch]
+            d_n, d_e, d_a, p_n, p_ei, p_ea, p_batch, cross_ei, cross_ea, labels = batch
+            d_n, d_e, d_a   = d_n.to(device),   d_e.to(device),   d_a.to(device)
+            p_n, p_ei, p_ea = p_n.to(device),   p_ei.to(device),  p_ea.to(device)
+            p_batch         = p_batch.to(device)
+            cross_ei, cross_ea = cross_ei.to(device), cross_ea.to(device)
+            labels          = labels.to(device)
             optimizer.zero_grad()
-    
-            # forward
-            preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
+
+            # TODO: DualGraphAttentionNetwork.forward must be updated to accept
+            # sparse protein tensors (p_n, p_ei, p_ea, p_batch) and cross-graph
+            # edges (cross_ei, cross_ea) before training is functional.
+            preds = model(d_n, d_e, d_a, p_n, p_ei, p_ea, p_batch, cross_ei, cross_ea).squeeze(-1)
             loss = loss_func(preds, labels)
     
             # backward + clip + step
@@ -243,8 +295,15 @@ def get_validation_metrics(loader, model, loss_func, device):
 
     with torch.no_grad():
         for batch in loader:
-            d_n, d_e, d_a, p_n, p_e, p_a, labels = [x.to(device, non_blocking=True) for x in batch]
-            preds = model(d_n, d_e, d_a, p_n, p_e, p_a).squeeze(-1)
+            d_n, d_e, d_a, p_n, p_ei, p_ea, p_batch, cross_ei, cross_ea, labels = batch
+            d_n, d_e, d_a   = d_n.to(device, non_blocking=True), d_e.to(device, non_blocking=True), d_a.to(device, non_blocking=True)
+            p_n, p_ei, p_ea = p_n.to(device, non_blocking=True), p_ei.to(device, non_blocking=True), p_ea.to(device, non_blocking=True)
+            p_batch         = p_batch.to(device, non_blocking=True)
+            cross_ei        = cross_ei.to(device, non_blocking=True)
+            cross_ea        = cross_ea.to(device, non_blocking=True)
+            labels          = labels.to(device, non_blocking=True)
+            # TODO: update model.forward for sparse protein + cross-edges.
+            preds = model(d_n, d_e, d_a, p_n, p_ei, p_ea, p_batch, cross_ei, cross_ea).squeeze(-1)
             loss = loss_func(preds, labels).item()
             acc = accuracy_func(preds, labels, threshold=1.0)
             mse = mse_func(preds, labels)

@@ -1,4 +1,7 @@
 """Module to benchmark the trained GAT model."""
+# NOTE: This benchmark script is outdated. It uses the old single-graph GraphAttentionNetwork
+# and does not work with the current DualGraphAttentionNetwork architecture.
+# Use the ModelBenchmark tab in main.py for current benchmarking.
 import argparse
 import torch
 from torch import nn
