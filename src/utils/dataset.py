@@ -7,6 +7,10 @@ Note that DrugMolecules now include optional 3D atomic coordinates as node featu
 import rdkit.Chem
 from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem
+
+# Suppress UFFTYPER and other non-actionable RDKit C++ warnings globally.
+# Invalid SMILES are still caught via mol is None → ValueError before embedding.
+RDLogger.DisableLog('rdApp.*')
 from typing import Any
 import pandas as pd
 from functools import lru_cache
@@ -40,15 +44,28 @@ class DrugMolecule:
         # atom_coords with Boltz-2 complex coordinates (same frame as the
         # protein PDB) once Boltz-2 integration is complete.
         mol_h = Chem.AddHs(mol)
-        params = AllChem.ETKDGv3()
-        params.randomSeed = 42
-        # Suppress UFFTYPER warnings for unusual atoms (Se, exotic charge states, etc.).
-        # These are non-fatal: embedding falls back to zero coords via embed_ok below.
-        RDLogger.DisableLog('rdApp.warning')
-        try:
+        embed_ok = False
+
+        # 1. MMFF94 — better coverage of exotic atoms (Se, unusual charge states).
+        #    MMFFGetMoleculeProperties returns None when MMFF can't type the molecule,
+        #    which is the reliable signal to skip straight to the ETKDGv3 fallback.
+        mmff_props = AllChem.MMFFGetMoleculeProperties(mol_h, mmffVariant='MMFF94')
+        if mmff_props is not None:
+            params = AllChem.ETKDGv3()
+            params.randomSeed = 42
+            if AllChem.EmbedMolecule(mol_h, params) != -1:
+                try:
+                    AllChem.MMFFOptimizeMolecule(mol_h, mmffVariant='MMFF94')
+                except Exception:
+                    pass  # distance-geometry geometry is still usable without refinement
+                embed_ok = True
+
+        # 2. ETKDGv3 without MMFF refinement (handles molecules MMFF can't type).
+        if not embed_ok:
+            params = AllChem.ETKDGv3()
+            params.randomSeed = 42
             embed_ok = AllChem.EmbedMolecule(mol_h, params) != -1
-        finally:
-            RDLogger.EnableLog('rdApp.warning')
+
         mol = Chem.RemoveHs(mol_h)          # heavy-atom mol, conformer intact when embed_ok
         if embed_ok and mol.GetNumConformers() > 0:
             conf = mol.GetConformer()
