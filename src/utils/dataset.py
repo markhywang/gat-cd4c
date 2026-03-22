@@ -5,7 +5,7 @@ Note that DrugMolecules now include optional 3D atomic coordinates as node featu
 """
 
 import rdkit.Chem
-from rdkit import Chem
+from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem
 from typing import Any
 import pandas as pd
@@ -42,7 +42,13 @@ class DrugMolecule:
         mol_h = Chem.AddHs(mol)
         params = AllChem.ETKDGv3()
         params.randomSeed = 42
-        embed_ok = AllChem.EmbedMolecule(mol_h, params) != -1
+        # Suppress UFFTYPER warnings for unusual atoms (Se, exotic charge states, etc.).
+        # These are non-fatal: embedding falls back to zero coords via embed_ok below.
+        RDLogger.DisableLog('rdApp.warning')
+        try:
+            embed_ok = AllChem.EmbedMolecule(mol_h, params) != -1
+        finally:
+            RDLogger.EnableLog('rdApp.warning')
         mol = Chem.RemoveHs(mol_h)          # heavy-atom mol, conformer intact when embed_ok
         if embed_ok and mol.GetNumConformers() > 0:
             conf = mol.GetConformer()
