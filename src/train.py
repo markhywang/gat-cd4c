@@ -80,15 +80,8 @@ def collate_drug_prot(
         drug_as.append(pad_to(d_a,   (H, H)))
         drug_pos_b = pad_to(d_pos,   (H, 3))              # [H, 3]
 
-        # ── Protein: sparse, truncate to H if necessary ────────────────────
+        # ── Protein: sparse, no truncation needed (COO is O(E×F), not O(N²)) ─
         N = p_n.size(0)
-        if N > H:
-            keep = (p_i[0] < H) & (p_i[1] < H)
-            p_i   = p_i[:, keep]
-            p_e   = p_e[keep]
-            p_pos = p_pos[:H]
-            p_n   = p_n[:H]
-            N     = H
 
         prot_ns_list.append(p_n)
         prot_ei_list.append(p_i + prot_node_offset)       # offset into global node space
@@ -228,9 +221,6 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
             labels          = labels.to(device)
             optimizer.zero_grad()
 
-            # TODO: DualGraphAttentionNetwork.forward must be updated to accept
-            # sparse protein tensors (p_n, p_ei, p_ea, p_batch) and cross-graph
-            # edges (cross_ei, cross_ea) before training is functional.
             preds = model(d_n, d_e, d_a, p_n, p_ei, p_ea, p_batch, cross_ei, cross_ea).squeeze(-1)
             loss = loss_func(preds, labels)
     
