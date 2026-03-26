@@ -4,6 +4,8 @@ More specifically, it has the main DrugProtein dataset, which contains specific 
 Note that DrugMolecules now include optional 3D atomic coordinates as node features.
 """
 
+import hashlib
+import os
 import rdkit.Chem
 from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem
@@ -176,7 +178,8 @@ class DrugMolecule:
 
 class DrugProteinDataset(Dataset):
     def __init__(self, df: pd.DataFrame, prot_emb: pd.DataFrame, graph_dir: str,
-                 max_nodes: int = 256, use_half: bool = False, include_3d: bool = False):
+                 max_nodes: int = 256, use_half: bool = False, include_3d: bool = False,
+                 drug_cache_dir: str = None):
         self.max_nodes = max_nodes
         self.use_half = use_half
         self.include_3d = include_3d
@@ -186,12 +189,23 @@ class DrugProteinDataset(Dataset):
         self.prot_emb_df = prot_emb
         self.graph_dir = graph_dir
         self.builder = ProteinGraphBuilder(self.graph_dir)
+        self.drug_cache_dir = drug_cache_dir
+        if drug_cache_dir is not None:
+            os.makedirs(drug_cache_dir, exist_ok=True)
 
     def __len__(self):
         return len(self.pchembl)
 
     @lru_cache(maxsize=512)
     def load_drug(self, smiles: str):
+        if self.drug_cache_dir is not None:
+            key = hashlib.sha256(f"{smiles}|{self.max_nodes}|{self.include_3d}".encode()).hexdigest()
+            cache_path = os.path.join(self.drug_cache_dir, f"{key}.pt")
+            if os.path.exists(cache_path):
+                return torch.load(cache_path, weights_only=True)
+            tensors = DrugMolecule(smiles, self.max_nodes, self.include_3d).to_tensors()
+            torch.save(tensors, cache_path)
+            return tensors
         return DrugMolecule(smiles, self.max_nodes, self.include_3d).to_tensors()
 
     @lru_cache(maxsize=128)

@@ -178,7 +178,8 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
     train_ds, val_ds, _ = load_data(
         args.data_path, args.seed,
         args.frac_train, args.frac_validation, args.frac_test,
-        args.use_small_dataset, args.protein_graph_dir
+        args.use_small_dataset, args.protein_graph_dir,
+        drug_cache_dir=args.drug_cache_dir,
     )
 
     ctx = mp.get_context('spawn')
@@ -328,7 +329,7 @@ def get_validation_metrics(loader, model, loss_func, device):
     )
 
 
-def load_data(data_path, seed, frac_train, frac_val, frac_test, use_small, protein_graph_dir):
+def load_data(data_path, seed, frac_train, frac_val, frac_test, use_small, protein_graph_dir, drug_cache_dir=None):
     assert math.isclose(frac_train + frac_val + frac_test, 1), \
         "Train/val/test fractions must sum to 1"
 
@@ -348,9 +349,9 @@ def load_data(data_path, seed, frac_train, frac_val, frac_test, use_small, prote
     val = val.drop(columns='stratify_col')
     te = te.drop(columns='stratify_col')
 
-    train_ds = DrugProteinDataset(tr, prot_emb, protein_graph_dir)
-    val_ds = DrugProteinDataset(val, prot_emb, protein_graph_dir)
-    test_ds = DrugProteinDataset(te, prot_emb, protein_graph_dir)
+    train_ds = DrugProteinDataset(tr, prot_emb, protein_graph_dir, drug_cache_dir=drug_cache_dir)
+    val_ds = DrugProteinDataset(val, prot_emb, protein_graph_dir, drug_cache_dir=drug_cache_dir)
+    test_ds = DrugProteinDataset(te, prot_emb, protein_graph_dir, drug_cache_dir=drug_cache_dir)
     return train_ds, val_ds, test_ds
 
 
@@ -372,6 +373,8 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Path to interaction CSVs and embeddings")
     parser.add_argument("--protein_graph_dir", type=str, default='../../data/protein_graphs',
                         help="Directory containing saved protein .pt graphs")
+    parser.add_argument("--drug_cache_dir", type=str, default='../data/drug_cache',
+                        help="Directory for caching pre-computed drug tensors to disk")
     parser.add_argument("--frac_train", type=float, default=0.7,
                         help="Fraction of data for training")
     parser.add_argument("--frac_validation", type=float, default=0.15,
