@@ -81,7 +81,7 @@ class AnalysisApp(tk.Tk):
 
         self.model = DualGraphAttentionNetwork(
             drug_in_features=29,
-            prot_in_features=1283,
+            prot_in_features=24,
             hidden_size=args.hidden_size,
             emb_size=getattr(args, "emb_size", args.hidden_size),
             drug_edge_features=17,
