@@ -22,5 +22,6 @@ args_dict = {
     "emb_size": 128,
     "mlp_hidden": 192,
     "max_nodes": 80,
+    "max_prot_nodes": 512,
     "protein_graph_dir": "data/protein_graphs",
 }

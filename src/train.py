@@ -33,11 +33,14 @@ def collate_drug_prot(
         batch,
         hard_limit: int = 80,
         drug_edge_feats: int = 17,
-        cross_cutoff: float = 5.0):
+        cross_cutoff: float = 5.0,
+        max_prot_nodes: int = 512):
     """Collate a list of DrugProteinDataset items into a batch.
 
     Drug graphs remain **dense** (padded/cropped to hard_limit × hard_limit).
     Protein graphs remain **sparse** (PyG COO format, concatenated across the batch).
+    Proteins are truncated to *max_prot_nodes* residues to bound the O(N²) memory
+    cost of global self-attention in SparseProteinGPSLayer (to_dense_batch + MHA).
     Cross-graph edges connect drug atoms to protein residues within *cross_cutoff* Å,
     yielding a sparse [2, E_cross] index for biologically focused cross-attention.
 
@@ -80,7 +83,17 @@ def collate_drug_prot(
         drug_as.append(pad_to(d_a,   (H, H)))
         drug_pos_b = pad_to(d_pos,   (H, 3))              # [H, 3]
 
-        # ── Protein: sparse, no truncation needed (COO is O(E×F), not O(N²)) ─
+        # ── Protein: truncate to max_prot_nodes to bound MHA memory (O(N²)) ─
+        # to_dense_batch pads the whole batch to the longest protein; without a
+        # cap a single 2500-residue protein inflates every batch's attention
+        # matrix to [B, heads, 2500, 2500] ≈ 25 GB per GPS layer.
+        if p_n.size(0) > max_prot_nodes:
+            p_n   = p_n[:max_prot_nodes]
+            p_pos = p_pos[:max_prot_nodes]
+            keep  = (p_i[0] < max_prot_nodes) & (p_i[1] < max_prot_nodes)
+            p_i   = p_i[:, keep]
+            p_e   = p_e[keep]
+
         N = p_n.size(0)
 
         prot_ns_list.append(p_n)
@@ -184,6 +197,7 @@ def train_model(args: argparse.Namespace, m_device: torch.device) -> None:
         hard_limit=args.max_nodes,
         drug_edge_feats=17,
         cross_cutoff=5.0,
+        max_prot_nodes=getattr(args, "max_prot_nodes", 512),
     )
     train_loader = DataLoader(train_ds, shuffle=True,  collate_fn=collate_fn, **loader_kwargs)
     val_loader   = DataLoader(val_ds,   shuffle=False, collate_fn=collate_fn, **loader_kwargs)
@@ -394,6 +408,10 @@ def get_parser() -> argparse.ArgumentParser:
                         help="Hidden size for final MLP")
     parser.add_argument("--max_nodes", type=int, default=256,
                         help="Cap node count per graph to reduce memory")
+    parser.add_argument("--max_prot_nodes", type=int, default=512,
+                        help="Truncate protein graphs to this many residues. "
+                             "MHA attention is O(N²), so a 2500-residue protein "
+                             "without a cap costs ~25 GB/layer.")
 
     return parser
 
